@@ -1,0 +1,65 @@
+plugins {
+    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.kotlinAndroid)
+    alias(libs.plugins.composeMultiplatform)
+    alias(libs.plugins.composeCompiler)
+}
+
+android {
+    namespace = "com.yepanywhere.android"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "com.yepanywhere.android"
+        minSdk = 24
+        targetSdk = 36
+        versionCode = 1
+        versionName = "0.1.0"
+    }
+
+    buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
+        getByName("release") {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+dependencies {
+    implementation(project(":shared-core"))
+    implementation(project(":shared-ui"))
+    implementation(project(":android-data"))
+
+    implementation(libs.androidx.activity.compose)
+    implementation(compose.ui)
+    implementation(compose.foundation)
+    implementation(compose.material3)
+
+    debugImplementation(compose.uiTooling)
+}
+
+
+
+
