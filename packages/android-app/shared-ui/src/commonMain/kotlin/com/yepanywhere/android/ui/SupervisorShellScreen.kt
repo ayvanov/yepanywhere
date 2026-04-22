@@ -34,6 +34,7 @@ import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
+import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionSummary
@@ -280,13 +281,22 @@ private fun ActiveSessionSection(
     state: ActiveSessionScreenState,
     callbacks: ActiveSessionCallbacks,
 ) {
+    val actionsEnabled = state.timeline.connectionStatus == RelayConnectionStatus.CONNECTED
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         SectionTitle(
             title = state.title,
             subtitle = state.subtitle,
         )
 
-        ReplyComposer(onSendReply = callbacks.onSendReply)
+        if (!actionsEnabled) {
+            ActiveSessionStatusBanner(connectionStatus = state.timeline.connectionStatus)
+        }
+
+        ReplyComposer(
+            onSendReply = callbacks.onSendReply,
+            actionsEnabled = actionsEnabled,
+        )
 
         SectionList(
             title = "Pending actions",
@@ -296,6 +306,7 @@ private fun ActiveSessionSection(
             PendingRequestCard(
                 request = request,
                 callbacks = callbacks,
+                actionsEnabled = actionsEnabled,
             )
         }
 
@@ -310,7 +321,50 @@ private fun ActiveSessionSection(
 }
 
 @Composable
-private fun ReplyComposer(onSendReply: (String) -> Unit) {
+private fun ActiveSessionStatusBanner(connectionStatus: RelayConnectionStatus) {
+    val title = when (connectionStatus) {
+        RelayConnectionStatus.DISCONNECTED -> "Offline snapshot"
+        RelayConnectionStatus.CONNECTING -> "Reconnecting"
+        RelayConnectionStatus.SYNCING -> "Sync in progress"
+        RelayConnectionStatus.CONNECTED -> return
+    }
+    val body = when (connectionStatus) {
+        RelayConnectionStatus.DISCONNECTED -> "Actions stay read-only until relay connectivity returns."
+        RelayConnectionStatus.CONNECTING -> "Cached content stays visible while the relay session reconnects."
+        RelayConnectionStatus.SYNCING -> "Cached content is visible while the active session catches up."
+        RelayConnectionStatus.CONNECTED -> return
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("active-session-status-banner"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReplyComposer(
+    onSendReply: (String) -> Unit,
+    actionsEnabled: Boolean,
+) {
     var replyDraft by rememberSaveable { mutableStateOf("") }
 
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -345,7 +399,7 @@ private fun ReplyComposer(onSendReply: (String) -> Unit) {
             ) {
                 Button(
                     modifier = Modifier.testTag("reply-send"),
-                    enabled = replyDraft.isNotBlank(),
+                    enabled = actionsEnabled && replyDraft.isNotBlank(),
                     onClick = {
                         onSendReply(replyDraft.trim())
                         replyDraft = ""
@@ -362,6 +416,7 @@ private fun ReplyComposer(onSendReply: (String) -> Unit) {
 private fun PendingRequestCard(
     request: PendingInputRequest,
     callbacks: ActiveSessionCallbacks,
+    actionsEnabled: Boolean,
 ) {
     var responseDraft by rememberSaveable(request.id) { mutableStateOf("") }
 
@@ -426,6 +481,7 @@ private fun PendingRequestCard(
                     ) {
                         Button(
                             modifier = Modifier.testTag("pending-request-deny-${request.id}"),
+                            enabled = actionsEnabled,
                             onClick = {
                                 callbacks.onDenyRequest(
                                     request.id,
@@ -438,6 +494,7 @@ private fun PendingRequestCard(
                         }
                         Button(
                             modifier = Modifier.testTag("pending-request-approve-${request.id}"),
+                            enabled = actionsEnabled,
                             onClick = {
                                 callbacks.onApproveRequest(request.id)
                                 responseDraft = ""
@@ -464,7 +521,7 @@ private fun PendingRequestCard(
                     ) {
                         Button(
                             modifier = Modifier.testTag("pending-request-answer-${request.id}"),
-                            enabled = responseDraft.isNotBlank(),
+                            enabled = actionsEnabled && responseDraft.isNotBlank(),
                             onClick = {
                                 callbacks.onAnswerQuestion(
                                     request.id,

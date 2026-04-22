@@ -2,11 +2,13 @@ package com.yepanywhere.android
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
@@ -200,6 +202,57 @@ class SupervisorShellScreenTest {
         }
     }
 
+    @Test
+    fun disconnectedActiveSessionShowsCachedStateBanner() {
+        renderShell(
+            activeSessionState = activeSessionState(
+                timeline = disconnectedTimeline(),
+            ),
+            shellState = shellState(
+                timeline = disconnectedTimeline(),
+            ),
+        )
+
+        composeRule.onNodeWithTag("active-session-status-banner")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Offline snapshot")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Actions stay read-only until relay connectivity returns.")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun disconnectedActiveSessionDisablesNetworkActions() {
+        renderShell(
+            activeSessionState = activeSessionState(
+                pendingRequests = listOf(approvalRequest(), questionRequest()),
+                timeline = disconnectedTimeline(),
+            ),
+            shellState = shellState(
+                pendingRequests = listOf(approvalRequest(), questionRequest()),
+                timeline = disconnectedTimeline(),
+            ),
+        )
+
+        composeRule.onNodeWithTag("reply-input")
+            .performTextInput("Need relay back")
+        composeRule.onNodeWithTag("reply-send")
+            .assertIsNotEnabled()
+
+        scrollShellTo("pending-request-approve-request-approval")
+        composeRule.onNodeWithTag("pending-request-approve-request-approval")
+            .assertIsNotEnabled()
+        composeRule.onNodeWithTag("pending-request-deny-request-approval")
+            .assertIsNotEnabled()
+
+        scrollShellTo("pending-request-input-request-question")
+        composeRule.onNodeWithTag("pending-request-input-request-question")
+            .performTextInput("Use cached snapshot")
+        scrollShellTo("pending-request-answer-request-question")
+        composeRule.onNodeWithTag("pending-request-answer-request-question")
+            .assertIsNotEnabled()
+    }
+
     private fun renderShell(
         shellState: SupervisorShellScreenState = shellState(),
         activeSessionState: ActiveSessionScreenState = activeSessionState(),
@@ -320,6 +373,12 @@ class SupervisorShellScreenTest {
                     timestampLabel = "09:44",
                 ),
             ),
+        )
+    }
+
+    private fun disconnectedTimeline(): SessionTimeline {
+        return timeline().copy(
+            connectionStatus = RelayConnectionStatus.DISCONNECTED,
         )
     }
 
