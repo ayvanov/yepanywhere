@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlinAndroid)
 }
 
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 android {
     namespace = "com.yepanywhere.android.data"
     compileSdk = 36
@@ -17,8 +19,18 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
     implementation(project(":shared-core"))
+    implementation(libs.kotlinx.coroutines.core)
+
+    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 

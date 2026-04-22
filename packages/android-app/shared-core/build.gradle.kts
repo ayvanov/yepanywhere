@@ -4,8 +4,14 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 }
 
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 kotlin {
-    androidTarget()
+    androidTarget {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)

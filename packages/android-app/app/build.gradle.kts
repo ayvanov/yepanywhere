@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 android {
     namespace = "com.yepanywhere.android"
     compileSdk = 36
@@ -44,6 +46,12 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 

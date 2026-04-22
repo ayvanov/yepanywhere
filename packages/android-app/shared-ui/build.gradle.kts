@@ -5,8 +5,14 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 kotlin {
-    androidTarget()
+    androidTarget {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
     sourceSets {
         commonMain.dependencies {
             implementation(project(":shared-core"))
