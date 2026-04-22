@@ -4,38 +4,42 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
-import com.yepanywhere.android.data.AndroidDataLayer
 import com.yepanywhere.android.ui.SupervisorShellScreen
 
 class MainActivity : ComponentActivity() {
-    private val dataLayer: AndroidDataLayer
-        get() = (application as YepAnywhereAndroidApplication).appContainer.androidDataLayer
+    private val appContainer: AndroidAppContainer
+        get() = (application as YepAnywhereAndroidApplication).appContainer
+
+    private val viewModel: SupervisorShellViewModel by viewModels {
+        appContainer.createSupervisorShellViewModelFactory()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         setContent {
-            YepAnywhereAndroidApp(dataLayer = dataLayer)
+            YepAnywhereAndroidApp(viewModel = viewModel)
         }
     }
 }
 
 @Composable
-private fun YepAnywhereAndroidApp(dataLayer: AndroidDataLayer) {
-    val snapshot by dataLayer.shellState.collectAsState()
+private fun YepAnywhereAndroidApp(viewModel: SupervisorShellViewModel) {
+    val state by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(dataLayer) {
-        dataLayer.connectDemoSession()
+    LaunchedEffect(viewModel) {
+        viewModel.ensureDemoSessionConnected()
     }
 
     SupervisorShellScreen(
-        snapshot = snapshot,
-        dataLayerSummary = AndroidDataLayer.summary,
+        state = state,
+        onSectionSelected = viewModel::selectSection,
     )
 }
 

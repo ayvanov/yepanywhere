@@ -66,6 +66,9 @@ dependencies {
     implementation(compose.material3)
 
     debugImplementation(compose.uiTooling)
+
+    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 

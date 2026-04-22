@@ -16,10 +16,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -34,7 +30,7 @@ import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 
-private enum class SupervisorSection(
+enum class SupervisorShellSection(
     val label: String,
 ) {
     PROJECTS("Projects"),
@@ -43,31 +39,34 @@ private enum class SupervisorSection(
     ACTIVE("Active"),
 }
 
+data class SupervisorShellScreenState(
+    val title: String,
+    val subtitle: String,
+    val snapshot: SupervisorShellSnapshot,
+    val selectedSection: SupervisorShellSection,
+)
+
 @Composable
 fun SupervisorShellScreen(
-    snapshot: SupervisorShellSnapshot,
-    dataLayerSummary: String,
+    state: SupervisorShellScreenState,
+    onSectionSelected: (SupervisorShellSection) -> Unit,
 ) {
     AndroidAppTheme {
-        var selectedSection by rememberSaveable {
-            mutableStateOf(SupervisorSection.ACTIVE)
-        }
-
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             bottomBar = {
                 NavigationBar {
-                    SupervisorSection.entries.forEach { section ->
+                    SupervisorShellSection.entries.forEach { section ->
                         NavigationBarItem(
-                            selected = selectedSection == section,
-                            onClick = { selectedSection = section },
+                            selected = state.selectedSection == section,
+                            onClick = { onSectionSelected(section) },
                             icon = {
                                 Text(
                                     text = when (section) {
-                                        SupervisorSection.PROJECTS -> "${snapshot.projects.size}"
-                                        SupervisorSection.SESSIONS -> "${snapshot.sessions.size}"
-                                        SupervisorSection.INBOX -> "${snapshot.unreadInboxCount}"
-                                        SupervisorSection.ACTIVE -> "${snapshot.pendingRequests.size}"
+                                        SupervisorShellSection.PROJECTS -> "${state.snapshot.projects.size}"
+                                        SupervisorShellSection.SESSIONS -> "${state.snapshot.sessions.size}"
+                                        SupervisorShellSection.INBOX -> "${state.snapshot.unreadInboxCount}"
+                                        SupervisorShellSection.ACTIVE -> "${state.snapshot.pendingRequests.size}"
                                     },
                                     style = MaterialTheme.typography.labelMedium,
                                 )
@@ -86,19 +85,19 @@ fun SupervisorShellScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 ShellHeader(
-                    title = "Yep Anywhere Android",
-                    subtitle = dataLayerSummary,
+                    title = state.title,
+                    subtitle = state.subtitle,
                 )
 
-                SummaryStrip(snapshot = snapshot)
+                SummaryStrip(snapshot = state.snapshot)
 
-                when (selectedSection) {
-                    SupervisorSection.PROJECTS -> ProjectsSection(snapshot.projects)
-                    SupervisorSection.SESSIONS -> SessionsSection(snapshot.sessions)
-                    SupervisorSection.INBOX -> InboxSection(snapshot.inboxItems)
-                    SupervisorSection.ACTIVE -> ActiveSessionSection(
-                        timeline = snapshot.timeline,
-                        pendingRequests = snapshot.pendingRequests,
+                when (state.selectedSection) {
+                    SupervisorShellSection.PROJECTS -> ProjectsSection(state.snapshot.projects)
+                    SupervisorShellSection.SESSIONS -> SessionsSection(state.snapshot.sessions)
+                    SupervisorShellSection.INBOX -> InboxSection(state.snapshot.inboxItems)
+                    SupervisorShellSection.ACTIVE -> ActiveSessionSection(
+                        timeline = state.snapshot.timeline,
+                        pendingRequests = state.snapshot.pendingRequests,
                     )
                 }
             }
