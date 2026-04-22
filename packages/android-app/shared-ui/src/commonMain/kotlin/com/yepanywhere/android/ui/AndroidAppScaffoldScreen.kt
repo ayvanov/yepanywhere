@@ -23,7 +23,7 @@ fun AndroidAppScaffoldScreen(
     plan: AndroidAppPlan,
     dataLayerSummary: String,
 ) {
-    AndroidAppTheme {
+    LegacyAndroidAppTheme {
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
             LazyColumn(
                 modifier = Modifier
@@ -69,7 +69,7 @@ fun AndroidAppScaffoldScreen(
 }
 
 @Composable
-fun AndroidAppTheme(content: @Composable () -> Unit) {
+private fun LegacyAndroidAppTheme(content: @Composable () -> Unit) {
     MaterialTheme(content = content)
 }
 

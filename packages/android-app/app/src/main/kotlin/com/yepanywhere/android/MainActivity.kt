@@ -5,9 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
-import com.yepanywhere.android.core.AndroidAppPlanDefaults
 import com.yepanywhere.android.data.AndroidDataLayer
-import com.yepanywhere.android.ui.AndroidAppScaffoldScreen
+import com.yepanywhere.android.ui.SupervisorShellScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -22,8 +21,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun YepAnywhereAndroidApp() {
-    AndroidAppScaffoldScreen(
-        plan = AndroidAppPlanDefaults.supervisorMvp,
+    SupervisorShellScreen(
+        snapshot = AndroidDataLayer.previewSnapshot,
         dataLayerSummary = AndroidDataLayer.summary,
     )
 }
