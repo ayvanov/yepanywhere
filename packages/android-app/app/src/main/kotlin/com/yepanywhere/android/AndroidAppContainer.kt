@@ -3,16 +3,24 @@ package com.yepanywhere.android
 import android.app.Application
 import androidx.lifecycle.ViewModelProvider
 import com.yepanywhere.android.data.AndroidDataLayer
+import com.yepanywhere.android.core.usecase.AnswerQuestionUseCase
+import com.yepanywhere.android.core.usecase.ApproveRequestUseCase
+import com.yepanywhere.android.core.usecase.DenyRequestUseCase
 import com.yepanywhere.android.core.usecase.ObserveActiveSessionUseCase
 import com.yepanywhere.android.core.usecase.ObserveInboxUseCase
 import com.yepanywhere.android.core.usecase.ObserveProjectsUseCase
 import com.yepanywhere.android.core.usecase.ObserveSessionsUseCase
+import com.yepanywhere.android.core.usecase.SendSessionReplyUseCase
 
 class AndroidAppContainer {
     val androidDataLayer = AndroidDataLayer()
     private val observeProjectsUseCase = ObserveProjectsUseCase(androidDataLayer.projectsRepository)
     private val observeSessionsUseCase = ObserveSessionsUseCase(androidDataLayer.sessionsRepository)
     private val observeInboxUseCase = ObserveInboxUseCase(androidDataLayer.inboxRepository)
+    private val sendSessionReplyUseCase = SendSessionReplyUseCase(androidDataLayer.sessionsRepository)
+    private val approveRequestUseCase = ApproveRequestUseCase(androidDataLayer.approvalsRepository)
+    private val denyRequestUseCase = DenyRequestUseCase(androidDataLayer.approvalsRepository)
+    private val answerQuestionUseCase = AnswerQuestionUseCase(androidDataLayer.approvalsRepository)
     private val observeActiveSessionUseCase = ObserveActiveSessionUseCase(
         sessionsRepository = androidDataLayer.sessionsRepository,
         approvalsRepository = androidDataLayer.approvalsRepository,
@@ -37,6 +45,10 @@ class AndroidAppContainer {
     fun createActiveSessionViewModelFactory(): ViewModelProvider.Factory {
         return ActiveSessionViewModel.factory(
             observeActiveSessionUseCase = observeActiveSessionUseCase,
+            sendSessionReplyUseCase = sendSessionReplyUseCase,
+            approveRequestUseCase = approveRequestUseCase,
+            denyRequestUseCase = denyRequestUseCase,
+            answerQuestionUseCase = answerQuestionUseCase,
             activeSessionId = androidDataLayer.activeSessionId,
         )
     }

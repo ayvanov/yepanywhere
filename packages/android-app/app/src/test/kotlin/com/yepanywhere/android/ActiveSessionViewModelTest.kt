@@ -8,7 +8,11 @@ import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.repository.ApprovalsRepository
 import com.yepanywhere.android.core.repository.SessionsRepository
+import com.yepanywhere.android.core.usecase.AnswerQuestionUseCase
+import com.yepanywhere.android.core.usecase.ApproveRequestUseCase
+import com.yepanywhere.android.core.usecase.DenyRequestUseCase
 import com.yepanywhere.android.core.usecase.ObserveActiveSessionUseCase
+import com.yepanywhere.android.core.usecase.SendSessionReplyUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
@@ -58,11 +62,17 @@ class ActiveSessionViewModelTest {
             ),
         )
         val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val sessionsRepository = FakeSessionsRepository(timeline)
+        val approvalsRepository = FakeApprovalsRepository(pendingRequests)
         val viewModel = ActiveSessionViewModel(
             observeActiveSessionUseCase = ObserveActiveSessionUseCase(
-                sessionsRepository = FakeSessionsRepository(timeline),
-                approvalsRepository = FakeApprovalsRepository(pendingRequests),
+                sessionsRepository = sessionsRepository,
+                approvalsRepository = approvalsRepository,
             ),
+            sendSessionReplyUseCase = SendSessionReplyUseCase(sessionsRepository),
+            approveRequestUseCase = ApproveRequestUseCase(approvalsRepository),
+            denyRequestUseCase = DenyRequestUseCase(approvalsRepository),
+            answerQuestionUseCase = AnswerQuestionUseCase(approvalsRepository),
             activeSessionId = "session-android-shell",
             scope = externalScope,
         )
@@ -96,27 +106,90 @@ class ActiveSessionViewModelTest {
         externalScope.cancel()
     }
 
+    @Test
+    fun forwardsReplyAndApprovalCommandsToUseCases() = runTest {
+        val timeline = MutableStateFlow(emptyTimeline())
+        val pendingRequests = MutableStateFlow(emptyList<PendingInputRequest>())
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val sessionsRepository = FakeSessionsRepository(timeline)
+        val approvalsRepository = FakeApprovalsRepository(pendingRequests)
+        val viewModel = ActiveSessionViewModel(
+            observeActiveSessionUseCase = ObserveActiveSessionUseCase(
+                sessionsRepository = sessionsRepository,
+                approvalsRepository = approvalsRepository,
+            ),
+            sendSessionReplyUseCase = SendSessionReplyUseCase(sessionsRepository),
+            approveRequestUseCase = ApproveRequestUseCase(approvalsRepository),
+            denyRequestUseCase = DenyRequestUseCase(approvalsRepository),
+            answerQuestionUseCase = AnswerQuestionUseCase(approvalsRepository),
+            activeSessionId = "session-android-shell",
+            scope = externalScope,
+        )
+
+        viewModel.sendReply("Reply from Android")
+        viewModel.approve("request-1")
+        viewModel.deny(
+            requestId = "request-2",
+            feedback = "Need another option",
+        )
+        viewModel.answerQuestion(
+            requestId = "request-3",
+            answer = "Use cache-first.",
+        )
+
+        advanceUntilIdle()
+
+        assertEquals(listOf("session-android-shell|Reply from Android"), sessionsRepository.sentReplies)
+        assertEquals(listOf("request-1"), approvalsRepository.approvedRequestIds)
+        assertEquals(listOf("request-2|Need another option"), approvalsRepository.deniedRequests)
+        assertEquals(listOf("request-3|Use cache-first."), approvalsRepository.answeredRequests)
+
+        externalScope.cancel()
+    }
+
     private class FakeSessionsRepository(
         private val timeline: MutableStateFlow<SessionTimeline>,
     ) : SessionsRepository {
+        val sentReplies = mutableListOf<String>()
+
         override fun observeSessions(projectId: String?): Flow<List<SessionSummary>> = MutableStateFlow(emptyList())
 
         override suspend fun refreshSessions(projectId: String?) = Unit
 
         override fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline> = timeline
 
-        override suspend fun sendReply(sessionId: String, text: String) = Unit
+        override suspend fun sendReply(sessionId: String, text: String) {
+            sentReplies += "$sessionId|$text"
+        }
     }
 
     private class FakeApprovalsRepository(
         private val pendingRequests: MutableStateFlow<List<PendingInputRequest>>,
     ) : ApprovalsRepository {
+        val approvedRequestIds = mutableListOf<String>()
+        val deniedRequests = mutableListOf<String>()
+        val answeredRequests = mutableListOf<String>()
+
         override fun observePendingApprovals(): Flow<List<PendingInputRequest>> = pendingRequests
 
-        override suspend fun approve(requestId: String) = Unit
+        override suspend fun approve(requestId: String) {
+            approvedRequestIds += requestId
+        }
 
-        override suspend fun deny(requestId: String, feedback: String?) = Unit
+        override suspend fun deny(requestId: String, feedback: String?) {
+            deniedRequests += "$requestId|$feedback"
+        }
 
-        override suspend fun answerQuestion(requestId: String, answer: String) = Unit
+        override suspend fun answerQuestion(requestId: String, answer: String) {
+            answeredRequests += "$requestId|$answer"
+        }
+    }
+
+    private fun emptyTimeline(): SessionTimeline {
+        return SessionTimeline(
+            sessionId = "session-android-shell",
+            connectionStatus = com.yepanywhere.android.core.model.RelayConnectionStatus.CONNECTED,
+            messages = emptyList(),
+        )
     }
 }

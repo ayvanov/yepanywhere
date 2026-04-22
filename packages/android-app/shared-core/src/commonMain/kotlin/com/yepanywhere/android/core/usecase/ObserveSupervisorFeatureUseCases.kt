@@ -27,10 +27,60 @@ class ObserveSessionsUseCase(
     }
 }
 
+class SendSessionReplyUseCase(
+    private val sessionsRepository: SessionsRepository,
+) {
+    suspend operator fun invoke(
+        sessionId: String,
+        text: String,
+    ) {
+        sessionsRepository.sendReply(
+            sessionId = sessionId,
+            text = text,
+        )
+    }
+}
+
 class ObserveInboxUseCase(
     private val inboxRepository: InboxRepository,
 ) {
     operator fun invoke(): Flow<List<InboxItem>> = inboxRepository.observeInboxItems()
+}
+
+class ApproveRequestUseCase(
+    private val approvalsRepository: ApprovalsRepository,
+) {
+    suspend operator fun invoke(requestId: String) {
+        approvalsRepository.approve(requestId)
+    }
+}
+
+class DenyRequestUseCase(
+    private val approvalsRepository: ApprovalsRepository,
+) {
+    suspend operator fun invoke(
+        requestId: String,
+        feedback: String? = null,
+    ) {
+        approvalsRepository.deny(
+            requestId = requestId,
+            feedback = feedback,
+        )
+    }
+}
+
+class AnswerQuestionUseCase(
+    private val approvalsRepository: ApprovalsRepository,
+) {
+    suspend operator fun invoke(
+        requestId: String,
+        answer: String,
+    ) {
+        approvalsRepository.answerQuestion(
+            requestId = requestId,
+            answer = answer,
+        )
+    }
 }
 
 data class ActiveSessionSnapshot(

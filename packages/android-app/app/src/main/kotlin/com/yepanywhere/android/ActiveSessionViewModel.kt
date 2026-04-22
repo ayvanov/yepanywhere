@@ -3,16 +3,25 @@ package com.yepanywhere.android
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.yepanywhere.android.core.usecase.AnswerQuestionUseCase
+import com.yepanywhere.android.core.usecase.ApproveRequestUseCase
+import com.yepanywhere.android.core.usecase.DenyRequestUseCase
 import com.yepanywhere.android.core.usecase.ObserveActiveSessionUseCase
+import com.yepanywhere.android.core.usecase.SendSessionReplyUseCase
 import com.yepanywhere.android.ui.ActiveSessionScreenState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 class ActiveSessionViewModel(
     private val observeActiveSessionUseCase: ObserveActiveSessionUseCase,
+    private val sendSessionReplyUseCase: SendSessionReplyUseCase,
+    private val approveRequestUseCase: ApproveRequestUseCase,
+    private val denyRequestUseCase: DenyRequestUseCase,
+    private val answerQuestionUseCase: AnswerQuestionUseCase,
     private val activeSessionId: String,
     scope: CoroutineScope? = null,
 ) : ViewModel() {
@@ -36,9 +45,52 @@ class ActiveSessionViewModel(
         ),
     )
 
+    fun sendReply(text: String) {
+        coroutineScope.launch {
+            sendSessionReplyUseCase(
+                sessionId = activeSessionId,
+                text = text,
+            )
+        }
+    }
+
+    fun approve(requestId: String) {
+        coroutineScope.launch {
+            approveRequestUseCase(requestId)
+        }
+    }
+
+    fun deny(
+        requestId: String,
+        feedback: String? = null,
+    ) {
+        coroutineScope.launch {
+            denyRequestUseCase(
+                requestId = requestId,
+                feedback = feedback,
+            )
+        }
+    }
+
+    fun answerQuestion(
+        requestId: String,
+        answer: String,
+    ) {
+        coroutineScope.launch {
+            answerQuestionUseCase(
+                requestId = requestId,
+                answer = answer,
+            )
+        }
+    }
+
     companion object {
         fun factory(
             observeActiveSessionUseCase: ObserveActiveSessionUseCase,
+            sendSessionReplyUseCase: SendSessionReplyUseCase,
+            approveRequestUseCase: ApproveRequestUseCase,
+            denyRequestUseCase: DenyRequestUseCase,
+            answerQuestionUseCase: AnswerQuestionUseCase,
             activeSessionId: String,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
@@ -47,6 +99,10 @@ class ActiveSessionViewModel(
                     @Suppress("UNCHECKED_CAST")
                     return ActiveSessionViewModel(
                         observeActiveSessionUseCase = observeActiveSessionUseCase,
+                        sendSessionReplyUseCase = sendSessionReplyUseCase,
+                        approveRequestUseCase = approveRequestUseCase,
+                        denyRequestUseCase = denyRequestUseCase,
+                        answerQuestionUseCase = answerQuestionUseCase,
                         activeSessionId = activeSessionId,
                     ) as T
                 }

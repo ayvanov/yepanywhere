@@ -127,6 +127,54 @@ class ObserveSupervisorFeaturesUseCasesTest {
         assertEquals(pendingRequests.value, activeSession.pendingRequests)
     }
 
+    @Test
+    fun sendSessionReplyDelegatesToSessionsRepository() = runTest(UnconfinedTestDispatcher()) {
+        val sessionsRepository = FakeSessionsRepository(
+            sessions = MutableStateFlow(emptyList()),
+            timeline = MutableStateFlow(emptyTimeline()),
+        )
+
+        SendSessionReplyUseCase(sessionsRepository)(
+            sessionId = "session-1",
+            text = "Reply from Android",
+        )
+
+        assertEquals(listOf("session-1|Reply from Android"), sessionsRepository.sentReplies)
+    }
+
+    @Test
+    fun approveRequestDelegatesToApprovalsRepository() = runTest(UnconfinedTestDispatcher()) {
+        val approvalsRepository = FakeApprovalsRepository(MutableStateFlow(emptyList()))
+
+        ApproveRequestUseCase(approvalsRepository)(requestId = "request-1")
+
+        assertEquals(listOf("request-1"), approvalsRepository.approvedRequestIds)
+    }
+
+    @Test
+    fun denyRequestDelegatesToApprovalsRepository() = runTest(UnconfinedTestDispatcher()) {
+        val approvalsRepository = FakeApprovalsRepository(MutableStateFlow(emptyList()))
+
+        DenyRequestUseCase(approvalsRepository)(
+            requestId = "request-2",
+            feedback = "Need another option",
+        )
+
+        assertEquals(listOf("request-2|Need another option"), approvalsRepository.deniedRequests)
+    }
+
+    @Test
+    fun answerQuestionDelegatesToApprovalsRepository() = runTest(UnconfinedTestDispatcher()) {
+        val approvalsRepository = FakeApprovalsRepository(MutableStateFlow(emptyList()))
+
+        AnswerQuestionUseCase(approvalsRepository)(
+            requestId = "request-3",
+            answer = "Use cache-first.",
+        )
+
+        assertEquals(listOf("request-3|Use cache-first."), approvalsRepository.answeredRequests)
+    }
+
     private class FakeProjectsRepository(
         private val projects: MutableStateFlow<List<ProjectSummary>>,
     ) : ProjectsRepository {
@@ -139,13 +187,17 @@ class ObserveSupervisorFeaturesUseCasesTest {
         private val sessions: MutableStateFlow<List<SessionSummary>>,
         private val timeline: MutableStateFlow<SessionTimeline>,
     ) : SessionsRepository {
+        val sentReplies = mutableListOf<String>()
+
         override fun observeSessions(projectId: String?): Flow<List<SessionSummary>> = sessions
 
         override suspend fun refreshSessions(projectId: String?) = Unit
 
         override fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline> = timeline
 
-        override suspend fun sendReply(sessionId: String, text: String) = Unit
+        override suspend fun sendReply(sessionId: String, text: String) {
+            sentReplies += "$sessionId|$text"
+        }
     }
 
     private class FakeInboxRepository(
@@ -159,13 +211,23 @@ class ObserveSupervisorFeaturesUseCasesTest {
     private class FakeApprovalsRepository(
         private val pendingRequests: MutableStateFlow<List<PendingInputRequest>>,
     ) : ApprovalsRepository {
+        val approvedRequestIds = mutableListOf<String>()
+        val deniedRequests = mutableListOf<String>()
+        val answeredRequests = mutableListOf<String>()
+
         override fun observePendingApprovals(): Flow<List<PendingInputRequest>> = pendingRequests
 
-        override suspend fun approve(requestId: String) = Unit
+        override suspend fun approve(requestId: String) {
+            approvedRequestIds += requestId
+        }
 
-        override suspend fun deny(requestId: String, feedback: String?) = Unit
+        override suspend fun deny(requestId: String, feedback: String?) {
+            deniedRequests += "$requestId|$feedback"
+        }
 
-        override suspend fun answerQuestion(requestId: String, answer: String) = Unit
+        override suspend fun answerQuestion(requestId: String, answer: String) {
+            answeredRequests += "$requestId|$answer"
+        }
     }
 
     private fun emptyTimeline(): SessionTimeline {
