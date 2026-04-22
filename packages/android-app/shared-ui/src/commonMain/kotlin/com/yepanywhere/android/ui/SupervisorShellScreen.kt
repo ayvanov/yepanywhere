@@ -333,7 +333,9 @@ private fun ReplyComposer(onSendReply: (String) -> Unit) {
             OutlinedTextField(
                 value = replyDraft,
                 onValueChange = { replyDraft = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("reply-input"),
                 label = { Text("Message") },
                 minLines = 3,
             )
@@ -342,6 +344,7 @@ private fun ReplyComposer(onSendReply: (String) -> Unit) {
                 horizontalArrangement = Arrangement.End,
             ) {
                 Button(
+                    modifier = Modifier.testTag("reply-send"),
                     enabled = replyDraft.isNotBlank(),
                     onClick = {
                         onSendReply(replyDraft.trim())
@@ -411,7 +414,9 @@ private fun PendingRequestCard(
                     OutlinedTextField(
                         value = responseDraft,
                         onValueChange = { responseDraft = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("pending-request-input-${request.id}"),
                         label = { Text("Optional denial note") },
                         minLines = 2,
                     )
@@ -420,6 +425,7 @@ private fun PendingRequestCard(
                         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
                     ) {
                         Button(
+                            modifier = Modifier.testTag("pending-request-deny-${request.id}"),
                             onClick = {
                                 callbacks.onDenyRequest(
                                     request.id,
@@ -431,6 +437,7 @@ private fun PendingRequestCard(
                             Text("Deny")
                         }
                         Button(
+                            modifier = Modifier.testTag("pending-request-approve-${request.id}"),
                             onClick = {
                                 callbacks.onApproveRequest(request.id)
                                 responseDraft = ""
@@ -445,7 +452,9 @@ private fun PendingRequestCard(
                     OutlinedTextField(
                         value = responseDraft,
                         onValueChange = { responseDraft = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("pending-request-input-${request.id}"),
                         label = { Text("Answer") },
                         minLines = 2,
                     )
@@ -454,6 +463,7 @@ private fun PendingRequestCard(
                         horizontalArrangement = Arrangement.End,
                     ) {
                         Button(
+                            modifier = Modifier.testTag("pending-request-answer-${request.id}"),
                             enabled = responseDraft.isNotBlank(),
                             onClick = {
                                 callbacks.onAnswerQuestion(
