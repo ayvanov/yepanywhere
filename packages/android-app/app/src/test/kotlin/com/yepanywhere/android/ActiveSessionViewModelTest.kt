@@ -1,11 +1,19 @@
 package com.yepanywhere.android
 
-import com.yepanywhere.android.data.SupervisorShellDataSource
-import com.yepanywhere.android.data.defaultSupervisorShellSnapshot
+import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.PendingInputRequest
+import com.yepanywhere.android.core.model.SessionMessage
+import com.yepanywhere.android.core.model.SessionMessageAuthor
+import com.yepanywhere.android.core.model.SessionSummary
+import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.repository.ApprovalsRepository
+import com.yepanywhere.android.core.repository.SessionsRepository
+import com.yepanywhere.android.core.usecase.ObserveActiveSessionUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -17,10 +25,45 @@ import kotlin.test.assertEquals
 class ActiveSessionViewModelTest {
     @Test
     fun mapsTimelineAndPendingRequestsIntoDedicatedActiveSessionState() = runTest {
-        val source = FakeSupervisorShellDataSource()
+        val timeline = MutableStateFlow(
+            SessionTimeline(
+                sessionId = "session-android-shell",
+                connectionStatus = com.yepanywhere.android.core.model.RelayConnectionStatus.CONNECTED,
+                messages = listOf(
+                    SessionMessage(
+                        id = "msg-1",
+                        author = SessionMessageAuthor.ASSISTANT,
+                        body = "Session detail is ready for extraction.",
+                        timestampLabel = "09:45",
+                    ),
+                ),
+            ),
+        )
+        val pendingRequests = MutableStateFlow(
+            listOf(
+                PendingInputRequest(
+                    id = "request-active",
+                    sessionId = "session-android-shell",
+                    title = "Choose sync strategy",
+                    body = "Use cache-first read-only snapshots for offline mode?",
+                    kind = InboxItemKind.QUESTION,
+                ),
+                PendingInputRequest(
+                    id = "request-other",
+                    sessionId = "session-other",
+                    title = "Unrelated approval",
+                    body = "This should not appear in active session.",
+                    kind = InboxItemKind.APPROVAL,
+                ),
+            ),
+        )
         val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val viewModel = ActiveSessionViewModel(
-            dataSource = source,
+            observeActiveSessionUseCase = ObserveActiveSessionUseCase(
+                sessionsRepository = FakeSessionsRepository(timeline),
+                approvalsRepository = FakeApprovalsRepository(pendingRequests),
+            ),
+            activeSessionId = "session-android-shell",
             scope = externalScope,
         )
         val collectionJob = externalScope.launch {
@@ -30,29 +73,50 @@ class ActiveSessionViewModelTest {
         advanceUntilIdle()
 
         assertEquals("Active session", viewModel.uiState.value.title)
-        assertEquals(source.shellState.value.timeline, viewModel.uiState.value.timeline)
-        assertEquals(source.shellState.value.pendingRequests, viewModel.uiState.value.pendingRequests)
+        assertEquals(timeline.value, viewModel.uiState.value.timeline)
+        assertEquals(1, viewModel.uiState.value.pendingRequests.size)
+        assertEquals("request-active", viewModel.uiState.value.pendingRequests.single().id)
 
-        source.shellState.value = source.shellState.value.copy(
-            timeline = source.shellState.value.timeline.copy(
-                messages = source.shellState.value.timeline.messages.takeLast(1),
+        timeline.value = timeline.value.copy(
+            messages = timeline.value.messages + SessionMessage(
+                id = "msg-2",
+                author = SessionMessageAuthor.USER,
+                body = "Keep moving toward real repositories.",
+                timestampLabel = "09:46",
             ),
-            pendingRequests = source.shellState.value.pendingRequests.take(1),
         )
+        pendingRequests.value = pendingRequests.value.filter { it.sessionId == "session-android-shell" }
 
         advanceUntilIdle()
 
-        assertEquals(1, viewModel.uiState.value.timeline.messages.size)
+        assertEquals(2, viewModel.uiState.value.timeline.messages.size)
         assertEquals(1, viewModel.uiState.value.pendingRequests.size)
 
         collectionJob.cancel()
         externalScope.cancel()
     }
 
-    private class FakeSupervisorShellDataSource : SupervisorShellDataSource {
-        override val summary: String = "Android-owned cache and secure relay session persistence."
-        override val shellState = MutableStateFlow(defaultSupervisorShellSnapshot())
+    private class FakeSessionsRepository(
+        private val timeline: MutableStateFlow<SessionTimeline>,
+    ) : SessionsRepository {
+        override fun observeSessions(projectId: String?): Flow<List<SessionSummary>> = MutableStateFlow(emptyList())
 
-        override suspend fun connectDemoSession() = Unit
+        override suspend fun refreshSessions(projectId: String?) = Unit
+
+        override fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline> = timeline
+
+        override suspend fun sendReply(sessionId: String, text: String) = Unit
+    }
+
+    private class FakeApprovalsRepository(
+        private val pendingRequests: MutableStateFlow<List<PendingInputRequest>>,
+    ) : ApprovalsRepository {
+        override fun observePendingApprovals(): Flow<List<PendingInputRequest>> = pendingRequests
+
+        override suspend fun approve(requestId: String) = Unit
+
+        override suspend fun deny(requestId: String, feedback: String?) = Unit
+
+        override suspend fun answerQuestion(requestId: String, answer: String) = Unit
     }
 }

@@ -36,6 +36,7 @@ class InMemorySupervisorRuntime(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     private val initialTimeline = initialSnapshot.timeline
+    val activeSessionId: String = initialTimeline.sessionId
     private val cache = InMemorySessionCacheStore(initialSnapshot)
     private val storedSession = MutableStateFlow<RelaySession?>(null)
     private val connectionState = MutableStateFlow(initialSnapshot.connectionStatus)

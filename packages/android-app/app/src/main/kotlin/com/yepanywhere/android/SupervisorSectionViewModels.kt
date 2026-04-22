@@ -3,7 +3,9 @@ package com.yepanywhere.android
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.yepanywhere.android.data.SupervisorShellDataSource
+import com.yepanywhere.android.core.usecase.ObserveInboxUseCase
+import com.yepanywhere.android.core.usecase.ObserveProjectsUseCase
+import com.yepanywhere.android.core.usecase.ObserveSessionsUseCase
 import com.yepanywhere.android.ui.InboxScreenState
 import com.yepanywhere.android.ui.ProjectsScreenState
 import com.yepanywhere.android.ui.SessionsScreenState
@@ -14,16 +16,16 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 class ProjectsScreenViewModel(
-    private val dataSource: SupervisorShellDataSource,
+    private val observeProjectsUseCase: ObserveProjectsUseCase,
     scope: CoroutineScope? = null,
 ) : ViewModel() {
     private val coroutineScope = scope ?: viewModelScope
 
-    val uiState: StateFlow<ProjectsScreenState> = dataSource.shellState.map { snapshot ->
+    val uiState: StateFlow<ProjectsScreenState> = observeProjectsUseCase().map { projects ->
         ProjectsScreenState(
             title = "Projects",
             subtitle = "Cached project summaries for the Supervisor MVP.",
-            projects = snapshot.projects,
+            projects = projects,
         )
     }.stateIn(
         scope = coroutineScope,
@@ -31,28 +33,28 @@ class ProjectsScreenViewModel(
         initialValue = ProjectsScreenState(
             title = "Projects",
             subtitle = "Cached project summaries for the Supervisor MVP.",
-            projects = dataSource.shellState.value.projects,
+            projects = emptyList(),
         ),
     )
 
     companion object {
-        fun factory(dataSource: SupervisorShellDataSource): ViewModelProvider.Factory {
-            return sectionFactory { ProjectsScreenViewModel(dataSource = dataSource) }
+        fun factory(observeProjectsUseCase: ObserveProjectsUseCase): ViewModelProvider.Factory {
+            return sectionFactory { ProjectsScreenViewModel(observeProjectsUseCase = observeProjectsUseCase) }
         }
     }
 }
 
 class SessionsScreenViewModel(
-    private val dataSource: SupervisorShellDataSource,
+    private val observeSessionsUseCase: ObserveSessionsUseCase,
     scope: CoroutineScope? = null,
 ) : ViewModel() {
     private val coroutineScope = scope ?: viewModelScope
 
-    val uiState: StateFlow<SessionsScreenState> = dataSource.shellState.map { snapshot ->
+    val uiState: StateFlow<SessionsScreenState> = observeSessionsUseCase().map { sessions ->
         SessionsScreenState(
             title = "Sessions",
             subtitle = "Supervisor-ready session summaries with attention state.",
-            sessions = snapshot.sessions,
+            sessions = sessions,
         )
     }.stateIn(
         scope = coroutineScope,
@@ -60,28 +62,28 @@ class SessionsScreenViewModel(
         initialValue = SessionsScreenState(
             title = "Sessions",
             subtitle = "Supervisor-ready session summaries with attention state.",
-            sessions = dataSource.shellState.value.sessions,
+            sessions = emptyList(),
         ),
     )
 
     companion object {
-        fun factory(dataSource: SupervisorShellDataSource): ViewModelProvider.Factory {
-            return sectionFactory { SessionsScreenViewModel(dataSource = dataSource) }
+        fun factory(observeSessionsUseCase: ObserveSessionsUseCase): ViewModelProvider.Factory {
+            return sectionFactory { SessionsScreenViewModel(observeSessionsUseCase = observeSessionsUseCase) }
         }
     }
 }
 
 class InboxScreenViewModel(
-    private val dataSource: SupervisorShellDataSource,
+    private val observeInboxUseCase: ObserveInboxUseCase,
     scope: CoroutineScope? = null,
 ) : ViewModel() {
     private val coroutineScope = scope ?: viewModelScope
 
-    val uiState: StateFlow<InboxScreenState> = dataSource.shellState.map { snapshot ->
+    val uiState: StateFlow<InboxScreenState> = observeInboxUseCase().map { inboxItems ->
         InboxScreenState(
             title = "Inbox",
             subtitle = "Minimal notification and approval feed for mobile supervision.",
-            items = snapshot.inboxItems,
+            items = inboxItems,
         )
     }.stateIn(
         scope = coroutineScope,
@@ -89,13 +91,13 @@ class InboxScreenViewModel(
         initialValue = InboxScreenState(
             title = "Inbox",
             subtitle = "Minimal notification and approval feed for mobile supervision.",
-            items = dataSource.shellState.value.inboxItems,
+            items = emptyList(),
         ),
     )
 
     companion object {
-        fun factory(dataSource: SupervisorShellDataSource): ViewModelProvider.Factory {
-            return sectionFactory { InboxScreenViewModel(dataSource = dataSource) }
+        fun factory(observeInboxUseCase: ObserveInboxUseCase): ViewModelProvider.Factory {
+            return sectionFactory { InboxScreenViewModel(observeInboxUseCase = observeInboxUseCase) }
         }
     }
 }

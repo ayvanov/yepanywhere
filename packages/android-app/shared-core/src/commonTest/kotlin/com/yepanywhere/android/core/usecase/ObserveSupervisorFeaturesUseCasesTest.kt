@@ -1,36 +1,44 @@
-package com.yepanywhere.android
+package com.yepanywhere.android.core.usecase
 
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
+import com.yepanywhere.android.core.model.SessionMessage
+import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.repository.ApprovalsRepository
 import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
 import com.yepanywhere.android.core.repository.SessionsRepository
-import com.yepanywhere.android.core.usecase.ObserveInboxUseCase
-import com.yepanywhere.android.core.usecase.ObserveProjectsUseCase
-import com.yepanywhere.android.core.usecase.ObserveSessionsUseCase
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class SupervisorSectionViewModelsTest {
+class ObserveSupervisorFeaturesUseCasesTest {
     @Test
-    fun mapsProjectsSessionsAndInboxIntoDedicatedSectionState() = runTest {
+    fun observeProjectsReturnsRepositoryProjects() = runTest(UnconfinedTestDispatcher()) {
         val projects = MutableStateFlow(
             listOf(ProjectSummary(id = "project-yep", name = "Yep Anywhere", isActive = true)),
         )
+
+        val useCase = ObserveProjectsUseCase(
+            projectsRepository = FakeProjectsRepository(projects),
+        )
+
+        assertEquals(projects.value, useCase().first())
+    }
+
+    @Test
+    fun observeSessionsReturnsRepositorySessions() = runTest(UnconfinedTestDispatcher()) {
         val sessions = MutableStateFlow(
             listOf(
                 SessionSummary(
@@ -43,6 +51,19 @@ class SupervisorSectionViewModelsTest {
                 ),
             ),
         )
+
+        val useCase = ObserveSessionsUseCase(
+            sessionsRepository = FakeSessionsRepository(
+                sessions = sessions,
+                timeline = MutableStateFlow(emptyTimeline()),
+            ),
+        )
+
+        assertEquals(sessions.value, useCase().first())
+    }
+
+    @Test
+    fun observeInboxReturnsRepositoryInboxItems() = runTest(UnconfinedTestDispatcher()) {
         val inboxItems = MutableStateFlow(
             listOf(
                 InboxItem(
@@ -56,61 +77,54 @@ class SupervisorSectionViewModelsTest {
                 ),
             ),
         )
-        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-        val projectsViewModel = ProjectsScreenViewModel(
-            observeProjectsUseCase = ObserveProjectsUseCase(FakeProjectsRepository(projects)),
-            scope = externalScope,
+
+        val useCase = ObserveInboxUseCase(
+            inboxRepository = FakeInboxRepository(inboxItems),
         )
-        val sessionsViewModel = SessionsScreenViewModel(
-            observeSessionsUseCase = ObserveSessionsUseCase(
-                FakeSessionsRepository(
-                    sessions = sessions,
-                    timeline = MutableStateFlow(emptyTimeline()),
+
+        assertEquals(inboxItems.value, useCase().first())
+    }
+
+    @Test
+    fun observeActiveSessionCombinesTimelineAndPendingRequests() = runTest(UnconfinedTestDispatcher()) {
+        val pendingRequests = MutableStateFlow(
+            listOf(
+                PendingInputRequest(
+                    id = "request-1",
+                    sessionId = "session-1",
+                    title = "Grant network access",
+                    body = "Allow relay diagnostics to run?",
+                    kind = InboxItemKind.APPROVAL,
                 ),
             ),
-            scope = externalScope,
         )
-        val inboxViewModel = InboxScreenViewModel(
-            observeInboxUseCase = ObserveInboxUseCase(FakeInboxRepository(inboxItems)),
-            scope = externalScope,
-        )
-        val collectionJobs = listOf(
-            externalScope.launch { projectsViewModel.uiState.collect {} },
-            externalScope.launch { sessionsViewModel.uiState.collect {} },
-            externalScope.launch { inboxViewModel.uiState.collect {} },
-        )
-
-        advanceUntilIdle()
-
-        assertEquals("Projects", projectsViewModel.uiState.value.title)
-        assertEquals(projects.value, projectsViewModel.uiState.value.projects)
-
-        assertEquals("Sessions", sessionsViewModel.uiState.value.title)
-        assertEquals(sessions.value, sessionsViewModel.uiState.value.sessions)
-
-        assertEquals("Inbox", inboxViewModel.uiState.value.title)
-        assertEquals(inboxItems.value, inboxViewModel.uiState.value.items)
-
-        projects.value = projects.value.take(1)
-        sessions.value = sessions.value.takeLast(1)
-        inboxItems.value = inboxItems.value + InboxItem(
-            id = "inbox-2",
-            projectId = "project-yep",
-            sessionId = "session-1",
-            title = "Question",
-            subtitle = "Need a follow-up answer",
-            kind = InboxItemKind.QUESTION,
-            isUnread = true,
+        val timeline = MutableStateFlow(
+            SessionTimeline(
+                sessionId = "session-1",
+                connectionStatus = com.yepanywhere.android.core.model.RelayConnectionStatus.CONNECTED,
+                messages = listOf(
+                    SessionMessage(
+                        id = "msg-1",
+                        author = SessionMessageAuthor.ASSISTANT,
+                        body = "Session detail is ready for extraction.",
+                        timestampLabel = "09:45",
+                    ),
+                ),
+            ),
         )
 
-        advanceUntilIdle()
+        val useCase = ObserveActiveSessionUseCase(
+            sessionsRepository = FakeSessionsRepository(
+                sessions = MutableStateFlow(emptyList()),
+                timeline = timeline,
+            ),
+            approvalsRepository = FakeApprovalsRepository(pendingRequests),
+        )
 
-        assertEquals(1, projectsViewModel.uiState.value.projects.size)
-        assertEquals(1, sessionsViewModel.uiState.value.sessions.size)
-        assertEquals(2, inboxViewModel.uiState.value.items.size)
+        val activeSession = useCase(sessionId = "session-1").first()
 
-        collectionJobs.forEach { it.cancel() }
-        externalScope.cancel()
+        assertEquals(timeline.value, activeSession.timeline)
+        assertEquals(pendingRequests.value, activeSession.pendingRequests)
     }
 
     private class FakeProjectsRepository(
@@ -140,6 +154,18 @@ class SupervisorSectionViewModelsTest {
         override fun observeInboxItems(): Flow<List<InboxItem>> = inboxItems
 
         override suspend fun refreshInbox() = Unit
+    }
+
+    private class FakeApprovalsRepository(
+        private val pendingRequests: MutableStateFlow<List<PendingInputRequest>>,
+    ) : ApprovalsRepository {
+        override fun observePendingApprovals(): Flow<List<PendingInputRequest>> = pendingRequests
+
+        override suspend fun approve(requestId: String) = Unit
+
+        override suspend fun deny(requestId: String, feedback: String?) = Unit
+
+        override suspend fun answerQuestion(requestId: String, answer: String) = Unit
     }
 
     private fun emptyTimeline(): SessionTimeline {
