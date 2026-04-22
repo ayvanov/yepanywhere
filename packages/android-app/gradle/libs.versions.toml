@@ -4,9 +4,17 @@ kotlin = "2.1.0"
 composeMultiplatform = "1.9.1"
 androidxActivity = "1.12.2"
 coroutines = "1.10.1"
+androidxTestExtJunit = "1.2.1"
+espresso = "3.6.1"
+androidxComposeUi = "1.9.1"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
+androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4", version.ref = "androidxComposeUi" }
+androidx-compose-ui-test = { module = "androidx.compose.ui:ui-test", version.ref = "androidxComposeUi" }
+androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest", version.ref = "androidxComposeUi" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExtJunit" }
+androidx-test-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 
