@@ -8,20 +8,27 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yepanywhere.android.core.model.InboxItem
+import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.SessionMessage
@@ -71,6 +78,13 @@ data class ActiveSessionScreenState(
     val pendingRequests: List<PendingInputRequest>,
 )
 
+data class ActiveSessionCallbacks(
+    val onSendReply: (String) -> Unit,
+    val onApproveRequest: (String) -> Unit,
+    val onDenyRequest: (requestId: String, feedback: String?) -> Unit,
+    val onAnswerQuestion: (requestId: String, answer: String) -> Unit,
+)
+
 @Composable
 fun SupervisorShellScreen(
     state: SupervisorShellScreenState,
@@ -78,6 +92,7 @@ fun SupervisorShellScreen(
     sessionsState: SessionsScreenState,
     inboxState: InboxScreenState,
     activeSessionState: ActiveSessionScreenState,
+    activeSessionCallbacks: ActiveSessionCallbacks,
     onSectionSelected: (SupervisorShellSection) -> Unit,
 ) {
     AndroidAppTheme {
@@ -124,7 +139,10 @@ fun SupervisorShellScreen(
                     SupervisorShellSection.PROJECTS -> ProjectsSection(projectsState)
                     SupervisorShellSection.SESSIONS -> SessionsSection(sessionsState)
                     SupervisorShellSection.INBOX -> InboxSection(inboxState)
-                    SupervisorShellSection.ACTIVE -> ActiveSessionSection(activeSessionState)
+                    SupervisorShellSection.ACTIVE -> ActiveSessionSection(
+                        state = activeSessionState,
+                        callbacks = activeSessionCallbacks,
+                    )
                 }
             }
         }
@@ -253,22 +271,26 @@ private fun InboxSection(state: InboxScreenState) {
 }
 
 @Composable
-private fun ActiveSessionSection(state: ActiveSessionScreenState) {
+private fun ActiveSessionSection(
+    state: ActiveSessionScreenState,
+    callbacks: ActiveSessionCallbacks,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         SectionTitle(
             title = state.title,
             subtitle = state.subtitle,
         )
 
+        ReplyComposer(onSendReply = callbacks.onSendReply)
+
         SectionList(
             title = "Pending actions",
             subtitle = "Approval and ask-user-question requests that need immediate handling.",
             items = state.pendingRequests,
         ) { request ->
-            ListCard(
-                title = request.title,
-                subtitle = request.body,
-                trailing = request.kind.name.lowercase().replaceFirstChar(Char::titlecase),
+            PendingRequestCard(
+                request = request,
+                callbacks = callbacks,
             )
         }
 
@@ -278,6 +300,177 @@ private fun ActiveSessionSection(state: ActiveSessionScreenState) {
             items = state.timeline.messages,
         ) { message ->
             MessageCard(message)
+        }
+    }
+}
+
+@Composable
+private fun ReplyComposer(onSendReply: (String) -> Unit) {
+    var replyDraft by rememberSaveable { mutableStateOf("") }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "Reply",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = "Send a follow-up message to the active session.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = replyDraft,
+                onValueChange = { replyDraft = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Message") },
+                minLines = 3,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Button(
+                    enabled = replyDraft.isNotBlank(),
+                    onClick = {
+                        onSendReply(replyDraft.trim())
+                        replyDraft = ""
+                    },
+                ) {
+                    Text("Send reply")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingRequestCard(
+    request: PendingInputRequest,
+    callbacks: ActiveSessionCallbacks,
+) {
+    var responseDraft by rememberSaveable(request.id) { mutableStateOf("") }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = request.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        text = request.body,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .background(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            shape = MaterialTheme.shapes.small,
+                        )
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = request.kind.name.lowercase().replaceFirstChar(Char::titlecase),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
+
+            when (request.kind) {
+                InboxItemKind.APPROVAL -> {
+                    OutlinedTextField(
+                        value = responseDraft,
+                        onValueChange = { responseDraft = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Optional denial note") },
+                        minLines = 2,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                    ) {
+                        Button(
+                            onClick = {
+                                callbacks.onDenyRequest(
+                                    request.id,
+                                    responseDraft.trim().takeIf { it.isNotEmpty() },
+                                )
+                                responseDraft = ""
+                            },
+                        ) {
+                            Text("Deny")
+                        }
+                        Button(
+                            onClick = {
+                                callbacks.onApproveRequest(request.id)
+                                responseDraft = ""
+                            },
+                        ) {
+                            Text("Approve")
+                        }
+                    }
+                }
+
+                InboxItemKind.QUESTION -> {
+                    OutlinedTextField(
+                        value = responseDraft,
+                        onValueChange = { responseDraft = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Answer") },
+                        minLines = 2,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        Button(
+                            enabled = responseDraft.isNotBlank(),
+                            onClick = {
+                                callbacks.onAnswerQuestion(
+                                    request.id,
+                                    responseDraft.trim(),
+                                )
+                                responseDraft = ""
+                            },
+                        ) {
+                            Text("Send answer")
+                        }
+                    }
+                }
+
+                InboxItemKind.NOTIFICATION -> {
+                    Text(
+                        text = "Notification-only item. No action is required yet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }

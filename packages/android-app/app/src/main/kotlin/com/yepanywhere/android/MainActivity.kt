@@ -9,6 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import com.yepanywhere.android.ui.ActiveSessionCallbacks
 import com.yepanywhere.android.ui.SupervisorShellScreen
 
 class MainActivity : ComponentActivity() {
@@ -60,6 +62,9 @@ private fun YepAnywhereAndroidApp(
     val sessionsState by sessionsViewModel.uiState.collectAsState()
     val inboxState by inboxViewModel.uiState.collectAsState()
     val activeSessionState by activeSessionViewModel.uiState.collectAsState()
+    val activeSessionCallbacks = remember(activeSessionViewModel) {
+        createActiveSessionCallbacks(activeSessionViewModel)
+    }
 
     LaunchedEffect(shellViewModel) {
         shellViewModel.ensureDemoSessionConnected()
@@ -71,7 +76,17 @@ private fun YepAnywhereAndroidApp(
         sessionsState = sessionsState,
         inboxState = inboxState,
         activeSessionState = activeSessionState,
+        activeSessionCallbacks = activeSessionCallbacks,
         onSectionSelected = shellViewModel::selectSection,
+    )
+}
+
+internal fun createActiveSessionCallbacks(handler: ActiveSessionCommandHandler): ActiveSessionCallbacks {
+    return ActiveSessionCallbacks(
+        onSendReply = handler::sendReply,
+        onApproveRequest = handler::approve,
+        onDenyRequest = handler::deny,
+        onAnswerQuestion = handler::answerQuestion,
     )
 }
 

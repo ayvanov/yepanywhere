@@ -16,6 +16,22 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+interface ActiveSessionCommandHandler {
+    fun sendReply(text: String)
+
+    fun approve(requestId: String)
+
+    fun deny(
+        requestId: String,
+        feedback: String? = null,
+    )
+
+    fun answerQuestion(
+        requestId: String,
+        answer: String,
+    )
+}
+
 class ActiveSessionViewModel(
     private val observeActiveSessionUseCase: ObserveActiveSessionUseCase,
     private val sendSessionReplyUseCase: SendSessionReplyUseCase,
@@ -24,7 +40,7 @@ class ActiveSessionViewModel(
     private val answerQuestionUseCase: AnswerQuestionUseCase,
     private val activeSessionId: String,
     scope: CoroutineScope? = null,
-) : ViewModel() {
+) : ViewModel(), ActiveSessionCommandHandler {
     private val coroutineScope = scope ?: viewModelScope
 
     val uiState: StateFlow<ActiveSessionScreenState> = observeActiveSessionUseCase(sessionId = activeSessionId).map { activeSession ->
@@ -45,7 +61,7 @@ class ActiveSessionViewModel(
         ),
     )
 
-    fun sendReply(text: String) {
+    override fun sendReply(text: String) {
         coroutineScope.launch {
             sendSessionReplyUseCase(
                 sessionId = activeSessionId,
@@ -54,15 +70,15 @@ class ActiveSessionViewModel(
         }
     }
 
-    fun approve(requestId: String) {
+    override fun approve(requestId: String) {
         coroutineScope.launch {
             approveRequestUseCase(requestId)
         }
     }
 
-    fun deny(
+    override fun deny(
         requestId: String,
-        feedback: String? = null,
+        feedback: String?,
     ) {
         coroutineScope.launch {
             denyRequestUseCase(
@@ -72,7 +88,7 @@ class ActiveSessionViewModel(
         }
     }
 
-    fun answerQuestion(
+    override fun answerQuestion(
         requestId: String,
         answer: String,
     ) {
