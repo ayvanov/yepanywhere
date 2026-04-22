@@ -2,11 +2,13 @@ package com.yepanywhere.android
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -253,8 +255,102 @@ class SupervisorShellScreenTest {
             .assertIsNotEnabled()
     }
 
+    @Test
+    fun navigationSelectionDispatchesRequestedSection() {
+        val selectedSections = mutableListOf<SupervisorShellSection>()
+
+        renderShell(
+            onSectionSelected = { selectedSections += it },
+        )
+
+        composeRule.onNodeWithText("Projects")
+            .performClick()
+        composeRule.onNodeWithText("Sessions")
+            .performClick()
+        composeRule.onNodeWithText("Inbox")
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(
+                    SupervisorShellSection.PROJECTS,
+                    SupervisorShellSection.SESSIONS,
+                    SupervisorShellSection.INBOX,
+                ),
+                selectedSections,
+            )
+        }
+    }
+
+    @Test
+    fun projectsSectionRendersWorkspaceSummary() {
+        renderShell(
+            shellState = shellState(selectedSection = SupervisorShellSection.PROJECTS),
+        )
+
+        composeRule.onNodeWithText("Project summary")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Yep Anywhere")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Active relay workspace")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun sessionsSectionRendersUnreadIndicators() {
+        renderShell(
+            shellState = shellState(
+                selectedSection = SupervisorShellSection.SESSIONS,
+                sessions = listOf(
+                    SessionSummary(
+                        id = "session-1",
+                        projectId = "project-1",
+                        title = "Android shell",
+                        status = SessionStatus.RUNNING,
+                        updatedLabel = "now",
+                        hasUnread = true,
+                    ),
+                ),
+            ),
+            sessionsState = sessionsState(
+                sessions = listOf(
+                    SessionSummary(
+                        id = "session-1",
+                        projectId = "project-1",
+                        title = "Android shell",
+                        status = SessionStatus.RUNNING,
+                        updatedLabel = "now",
+                        hasUnread = true,
+                    ),
+                ),
+            ),
+        )
+
+        composeRule.onNodeWithText("Session summary")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Android shell")
+            .assertIsDisplayed()
+        composeRule.onAllNodesWithText("Unread")
+            .assertCountEquals(2)
+    }
+
+    @Test
+    fun inboxSectionRendersUnreadKind() {
+        renderShell(
+            shellState = shellState(selectedSection = SupervisorShellSection.INBOX),
+        )
+
+        composeRule.onNodeWithText("Inbox summary")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Question")
+            .assertIsDisplayed()
+    }
+
     private fun renderShell(
         shellState: SupervisorShellScreenState = shellState(),
+        projectsState: ProjectsScreenState = projectsState(),
+        sessionsState: SessionsScreenState = sessionsState(),
+        inboxState: InboxScreenState = inboxState(),
         activeSessionState: ActiveSessionScreenState = activeSessionState(),
         callbacks: ActiveSessionCallbacks = ActiveSessionCallbacks(
             onSendReply = {},
@@ -262,16 +358,17 @@ class SupervisorShellScreenTest {
             onDenyRequest = { _, _ -> },
             onAnswerQuestion = { _, _ -> },
         ),
+        onSectionSelected: (SupervisorShellSection) -> Unit = {},
     ) {
         composeRule.setContent {
             SupervisorShellScreen(
                 state = shellState,
-                projectsState = projectsState(),
-                sessionsState = sessionsState(),
-                inboxState = inboxState(),
+                projectsState = projectsState,
+                sessionsState = sessionsState,
+                inboxState = inboxState,
                 activeSessionState = activeSessionState,
                 activeSessionCallbacks = callbacks,
-                onSectionSelected = {},
+                onSectionSelected = onSectionSelected,
             )
         }
     }
@@ -282,8 +379,10 @@ class SupervisorShellScreenTest {
     }
 
     private fun shellState(
+        selectedSection: SupervisorShellSection = SupervisorShellSection.ACTIVE,
         pendingRequests: List<PendingInputRequest> = listOf(questionRequest()),
         timeline: SessionTimeline = timeline(),
+        sessions: List<SessionSummary> = sessionsState().sessions,
     ): SupervisorShellScreenState {
         return SupervisorShellScreenState(
             title = "Yep Anywhere Android",
@@ -291,12 +390,12 @@ class SupervisorShellScreenTest {
             snapshot = SupervisorShellSnapshot(
                 connectionStatus = RelayConnectionStatus.CONNECTED,
                 projects = projectsState().projects,
-                sessions = sessionsState().sessions,
+                sessions = sessions,
                 inboxItems = inboxState().items,
                 timeline = timeline,
                 pendingRequests = pendingRequests,
                 ),
-            selectedSection = SupervisorShellSection.ACTIVE,
+            selectedSection = selectedSection,
         )
     }
 
@@ -308,20 +407,22 @@ class SupervisorShellScreenTest {
         )
     }
 
-    private fun sessionsState(): SessionsScreenState {
+    private fun sessionsState(
+        sessions: List<SessionSummary> = listOf(
+            SessionSummary(
+                id = "session-1",
+                projectId = "project-1",
+                title = "Android shell",
+                status = SessionStatus.RUNNING,
+                updatedLabel = "now",
+                hasUnread = false,
+            ),
+        ),
+    ): SessionsScreenState {
         return SessionsScreenState(
             title = "Sessions",
             subtitle = "Session summary",
-            sessions = listOf(
-                SessionSummary(
-                    id = "session-1",
-                    projectId = "project-1",
-                    title = "Android shell",
-                    status = SessionStatus.RUNNING,
-                    updatedLabel = "now",
-                    hasUnread = false,
-                ),
-            ),
+            sessions = sessions,
         )
     }
 
