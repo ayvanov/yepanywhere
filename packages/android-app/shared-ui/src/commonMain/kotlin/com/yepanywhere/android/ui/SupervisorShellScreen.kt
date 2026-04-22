@@ -46,9 +46,30 @@ data class SupervisorShellScreenState(
     val selectedSection: SupervisorShellSection,
 )
 
+data class ProjectsScreenState(
+    val title: String,
+    val subtitle: String,
+    val projects: List<ProjectSummary>,
+)
+
+data class SessionsScreenState(
+    val title: String,
+    val subtitle: String,
+    val sessions: List<SessionSummary>,
+)
+
+data class InboxScreenState(
+    val title: String,
+    val subtitle: String,
+    val items: List<InboxItem>,
+)
+
 @Composable
 fun SupervisorShellScreen(
     state: SupervisorShellScreenState,
+    projectsState: ProjectsScreenState,
+    sessionsState: SessionsScreenState,
+    inboxState: InboxScreenState,
     onSectionSelected: (SupervisorShellSection) -> Unit,
 ) {
     AndroidAppTheme {
@@ -92,9 +113,9 @@ fun SupervisorShellScreen(
                 SummaryStrip(snapshot = state.snapshot)
 
                 when (state.selectedSection) {
-                    SupervisorShellSection.PROJECTS -> ProjectsSection(state.snapshot.projects)
-                    SupervisorShellSection.SESSIONS -> SessionsSection(state.snapshot.sessions)
-                    SupervisorShellSection.INBOX -> InboxSection(state.snapshot.inboxItems)
+                    SupervisorShellSection.PROJECTS -> ProjectsSection(projectsState)
+                    SupervisorShellSection.SESSIONS -> SessionsSection(sessionsState)
+                    SupervisorShellSection.INBOX -> InboxSection(inboxState)
                     SupervisorShellSection.ACTIVE -> ActiveSessionSection(
                         timeline = state.snapshot.timeline,
                         pendingRequests = state.snapshot.pendingRequests,
@@ -183,11 +204,11 @@ private fun SummaryChip(
 }
 
 @Composable
-private fun ProjectsSection(projects: List<ProjectSummary>) {
+private fun ProjectsSection(state: ProjectsScreenState) {
     SectionList(
-        title = "Projects",
-        subtitle = "Cached project summaries for the Supervisor MVP.",
-        items = projects,
+        title = state.title,
+        subtitle = state.subtitle,
+        items = state.projects,
     ) { project ->
         ListCard(
             title = project.name,
@@ -197,11 +218,11 @@ private fun ProjectsSection(projects: List<ProjectSummary>) {
 }
 
 @Composable
-private fun SessionsSection(sessions: List<SessionSummary>) {
+private fun SessionsSection(state: SessionsScreenState) {
     SectionList(
-        title = "Sessions",
-        subtitle = "Supervisor-ready session summaries with attention state.",
-        items = sessions,
+        title = state.title,
+        subtitle = state.subtitle,
+        items = state.sessions,
     ) { session ->
         ListCard(
             title = session.title,
@@ -212,11 +233,11 @@ private fun SessionsSection(sessions: List<SessionSummary>) {
 }
 
 @Composable
-private fun InboxSection(items: List<InboxItem>) {
+private fun InboxSection(state: InboxScreenState) {
     SectionList(
-        title = "Inbox",
-        subtitle = "Minimal notification and approval feed for mobile supervision.",
-        items = items,
+        title = state.title,
+        subtitle = state.subtitle,
+        items = state.items,
     ) { item ->
         ListCard(
             title = item.title,

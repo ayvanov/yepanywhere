@@ -10,6 +10,18 @@ class AndroidAppContainer {
     fun createSupervisorShellViewModelFactory(): ViewModelProvider.Factory {
         return SupervisorShellViewModel.factory(androidDataLayer)
     }
+
+    fun createProjectsScreenViewModelFactory(): ViewModelProvider.Factory {
+        return ProjectsScreenViewModel.factory(androidDataLayer)
+    }
+
+    fun createSessionsScreenViewModelFactory(): ViewModelProvider.Factory {
+        return SessionsScreenViewModel.factory(androidDataLayer)
+    }
+
+    fun createInboxScreenViewModelFactory(): ViewModelProvider.Factory {
+        return InboxScreenViewModel.factory(androidDataLayer)
+    }
 }
 
 class YepAnywhereAndroidApplication : Application() {

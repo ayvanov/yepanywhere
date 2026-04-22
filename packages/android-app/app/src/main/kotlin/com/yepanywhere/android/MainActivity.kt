@@ -15,8 +15,17 @@ class MainActivity : ComponentActivity() {
     private val appContainer: AndroidAppContainer
         get() = (application as YepAnywhereAndroidApplication).appContainer
 
-    private val viewModel: SupervisorShellViewModel by viewModels {
+    private val shellViewModel: SupervisorShellViewModel by viewModels {
         appContainer.createSupervisorShellViewModelFactory()
+    }
+    private val projectsViewModel: ProjectsScreenViewModel by viewModels {
+        appContainer.createProjectsScreenViewModelFactory()
+    }
+    private val sessionsViewModel: SessionsScreenViewModel by viewModels {
+        appContainer.createSessionsScreenViewModelFactory()
+    }
+    private val inboxViewModel: InboxScreenViewModel by viewModels {
+        appContainer.createInboxScreenViewModelFactory()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -24,22 +33,38 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            YepAnywhereAndroidApp(viewModel = viewModel)
+            YepAnywhereAndroidApp(
+                shellViewModel = shellViewModel,
+                projectsViewModel = projectsViewModel,
+                sessionsViewModel = sessionsViewModel,
+                inboxViewModel = inboxViewModel,
+            )
         }
     }
 }
 
 @Composable
-private fun YepAnywhereAndroidApp(viewModel: SupervisorShellViewModel) {
-    val state by viewModel.uiState.collectAsState()
+private fun YepAnywhereAndroidApp(
+    shellViewModel: SupervisorShellViewModel,
+    projectsViewModel: ProjectsScreenViewModel,
+    sessionsViewModel: SessionsScreenViewModel,
+    inboxViewModel: InboxScreenViewModel,
+) {
+    val shellState by shellViewModel.uiState.collectAsState()
+    val projectsState by projectsViewModel.uiState.collectAsState()
+    val sessionsState by sessionsViewModel.uiState.collectAsState()
+    val inboxState by inboxViewModel.uiState.collectAsState()
 
-    LaunchedEffect(viewModel) {
-        viewModel.ensureDemoSessionConnected()
+    LaunchedEffect(shellViewModel) {
+        shellViewModel.ensureDemoSessionConnected()
     }
 
     SupervisorShellScreen(
-        state = state,
-        onSectionSelected = viewModel::selectSection,
+        state = shellState,
+        projectsState = projectsState,
+        sessionsState = sessionsState,
+        inboxState = inboxState,
+        onSectionSelected = shellViewModel::selectSection,
     )
 }
 
