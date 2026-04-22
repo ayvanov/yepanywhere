@@ -12,22 +12,25 @@ import com.yepanywhere.android.data.AndroidDataLayer
 import com.yepanywhere.android.ui.SupervisorShellScreen
 
 class MainActivity : ComponentActivity() {
+    private val dataLayer: AndroidDataLayer
+        get() = (application as YepAnywhereAndroidApplication).appContainer.androidDataLayer
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         setContent {
-            YepAnywhereAndroidApp()
+            YepAnywhereAndroidApp(dataLayer = dataLayer)
         }
     }
 }
 
 @Composable
-private fun YepAnywhereAndroidApp() {
-    val snapshot by AndroidDataLayer.shellState.collectAsState()
+private fun YepAnywhereAndroidApp(dataLayer: AndroidDataLayer) {
+    val snapshot by dataLayer.shellState.collectAsState()
 
-    LaunchedEffect(Unit) {
-        AndroidDataLayer.connectDemoSession()
+    LaunchedEffect(dataLayer) {
+        dataLayer.connectDemoSession()
     }
 
     SupervisorShellScreen(

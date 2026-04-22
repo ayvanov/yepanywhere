@@ -13,10 +13,12 @@ import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.core.repository.ApprovalsRepository
+import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
 import com.yepanywhere.android.core.repository.RelayAuthRepository
 import com.yepanywhere.android.core.repository.RelayConnectionClient
 import com.yepanywhere.android.core.repository.SessionsRepository
+import com.yepanywhere.android.core.usecase.ObserveSupervisorShellUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,7 +26,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -34,13 +35,6 @@ class InMemorySupervisorRuntime(
     initialSnapshot: SupervisorShellSnapshot = defaultSupervisorShellSnapshot(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
-    private data class ShellLists(
-        val connectionStatus: RelayConnectionStatus,
-        val projects: List<ProjectSummary>,
-        val sessions: List<SessionSummary>,
-        val inboxItems: List<InboxItem>,
-    )
-
     private val initialTimeline = initialSnapshot.timeline
     private val cache = InMemorySessionCacheStore(initialSnapshot)
     private val storedSession = MutableStateFlow<RelaySession?>(null)
@@ -106,6 +100,15 @@ class InMemorySupervisorRuntime(
         override fun observeProjects(): Flow<List<ProjectSummary>> = cache.observeProjects()
 
         override suspend fun refreshProjects() {
+            connectionState.value = RelayConnectionStatus.SYNCING
+            connectionState.value = RelayConnectionStatus.CONNECTED
+        }
+    }
+
+    val inboxRepository: InboxRepository = object : InboxRepository {
+        override fun observeInboxItems(): Flow<List<InboxItem>> = cache.observeInboxItems()
+
+        override suspend fun refreshInbox() {
             connectionState.value = RelayConnectionStatus.SYNCING
             connectionState.value = RelayConnectionStatus.CONNECTED
         }
@@ -194,34 +197,15 @@ class InMemorySupervisorRuntime(
         }
     }
 
-    private val shellLists = combine(
-        connectionState,
-        cache.observeProjects(),
-        cache.observeSessions(),
-        cache.observeInboxItems(),
-    ) { status, projects, sessions, inbox ->
-        ShellLists(
-            connectionStatus = status,
-            projects = projects,
-            sessions = sessions,
-            inboxItems = inbox,
-        )
-    }
+    private val observeSupervisorShellUseCase = ObserveSupervisorShellUseCase(
+        relayConnectionClient = relayConnectionClient,
+        projectsRepository = projectsRepository,
+        sessionsRepository = sessionsRepository,
+        inboxRepository = inboxRepository,
+        approvalsRepository = approvalsRepository,
+    )
 
-    val shellState = combine(
-        shellLists,
-        cache.observeTimeline(initialTimeline.sessionId).map { it ?: initialTimeline },
-        cache.observePendingRequests(),
-    ) { lists, timeline, pending ->
-        SupervisorShellSnapshot(
-            connectionStatus = lists.connectionStatus,
-            projects = lists.projects,
-            sessions = lists.sessions,
-            inboxItems = lists.inboxItems,
-            timeline = timeline,
-            pendingRequests = pending,
-        )
-    }.stateIn(
+    val shellState = observeSupervisorShellUseCase(activeSessionId = initialTimeline.sessionId).stateIn(
         scope = scope,
         started = SharingStarted.Eagerly,
         initialValue = initialSnapshot,

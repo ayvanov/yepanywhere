@@ -4,6 +4,7 @@ import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
+import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import kotlinx.coroutines.flow.Flow
@@ -38,6 +39,12 @@ interface ProjectsRepository {
     fun observeProjects(): Flow<List<ProjectSummary>>
 
     suspend fun refreshProjects()
+}
+
+interface InboxRepository {
+    fun observeInboxItems(): Flow<List<InboxItem>>
+
+    suspend fun refreshInbox()
 }
 
 interface SessionsRepository {
