@@ -64,12 +64,20 @@ data class InboxScreenState(
     val items: List<InboxItem>,
 )
 
+data class ActiveSessionScreenState(
+    val title: String,
+    val subtitle: String,
+    val timeline: SessionTimeline,
+    val pendingRequests: List<PendingInputRequest>,
+)
+
 @Composable
 fun SupervisorShellScreen(
     state: SupervisorShellScreenState,
     projectsState: ProjectsScreenState,
     sessionsState: SessionsScreenState,
     inboxState: InboxScreenState,
+    activeSessionState: ActiveSessionScreenState,
     onSectionSelected: (SupervisorShellSection) -> Unit,
 ) {
     AndroidAppTheme {
@@ -116,10 +124,7 @@ fun SupervisorShellScreen(
                     SupervisorShellSection.PROJECTS -> ProjectsSection(projectsState)
                     SupervisorShellSection.SESSIONS -> SessionsSection(sessionsState)
                     SupervisorShellSection.INBOX -> InboxSection(inboxState)
-                    SupervisorShellSection.ACTIVE -> ActiveSessionSection(
-                        timeline = state.snapshot.timeline,
-                        pendingRequests = state.snapshot.pendingRequests,
-                    )
+                    SupervisorShellSection.ACTIVE -> ActiveSessionSection(activeSessionState)
                 }
             }
         }
@@ -248,20 +253,17 @@ private fun InboxSection(state: InboxScreenState) {
 }
 
 @Composable
-private fun ActiveSessionSection(
-    timeline: SessionTimeline,
-    pendingRequests: List<PendingInputRequest>,
-) {
+private fun ActiveSessionSection(state: ActiveSessionScreenState) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         SectionTitle(
-            title = "Active session",
-            subtitle = "Foreground realtime shell for session detail and approvals.",
+            title = state.title,
+            subtitle = state.subtitle,
         )
 
         SectionList(
             title = "Pending actions",
             subtitle = "Approval and ask-user-question requests that need immediate handling.",
-            items = pendingRequests,
+            items = state.pendingRequests,
         ) { request ->
             ListCard(
                 title = request.title,
@@ -273,7 +275,7 @@ private fun ActiveSessionSection(
         SectionList(
             title = "Timeline",
             subtitle = "Current session transcript placeholder for Android UI iteration.",
-            items = timeline.messages,
+            items = state.timeline.messages,
         ) { message ->
             MessageCard(message)
         }

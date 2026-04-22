@@ -22,6 +22,10 @@ class AndroidAppContainer {
     fun createInboxScreenViewModelFactory(): ViewModelProvider.Factory {
         return InboxScreenViewModel.factory(androidDataLayer)
     }
+
+    fun createActiveSessionViewModelFactory(): ViewModelProvider.Factory {
+        return ActiveSessionViewModel.factory(androidDataLayer)
+    }
 }
 
 class YepAnywhereAndroidApplication : Application() {

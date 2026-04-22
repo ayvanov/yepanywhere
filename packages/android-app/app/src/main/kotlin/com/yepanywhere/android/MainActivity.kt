@@ -27,6 +27,9 @@ class MainActivity : ComponentActivity() {
     private val inboxViewModel: InboxScreenViewModel by viewModels {
         appContainer.createInboxScreenViewModelFactory()
     }
+    private val activeSessionViewModel: ActiveSessionViewModel by viewModels {
+        appContainer.createActiveSessionViewModelFactory()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +41,7 @@ class MainActivity : ComponentActivity() {
                 projectsViewModel = projectsViewModel,
                 sessionsViewModel = sessionsViewModel,
                 inboxViewModel = inboxViewModel,
+                activeSessionViewModel = activeSessionViewModel,
             )
         }
     }
@@ -49,11 +53,13 @@ private fun YepAnywhereAndroidApp(
     projectsViewModel: ProjectsScreenViewModel,
     sessionsViewModel: SessionsScreenViewModel,
     inboxViewModel: InboxScreenViewModel,
+    activeSessionViewModel: ActiveSessionViewModel,
 ) {
     val shellState by shellViewModel.uiState.collectAsState()
     val projectsState by projectsViewModel.uiState.collectAsState()
     val sessionsState by sessionsViewModel.uiState.collectAsState()
     val inboxState by inboxViewModel.uiState.collectAsState()
+    val activeSessionState by activeSessionViewModel.uiState.collectAsState()
 
     LaunchedEffect(shellViewModel) {
         shellViewModel.ensureDemoSessionConnected()
@@ -64,6 +70,7 @@ private fun YepAnywhereAndroidApp(
         projectsState = projectsState,
         sessionsState = sessionsState,
         inboxState = inboxState,
+        activeSessionState = activeSessionState,
         onSectionSelected = shellViewModel::selectSection,
     )
 }
