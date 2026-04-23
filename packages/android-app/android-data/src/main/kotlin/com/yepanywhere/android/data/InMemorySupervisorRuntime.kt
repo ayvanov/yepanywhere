@@ -24,6 +24,7 @@ import com.yepanywhere.android.core.repository.RelayConnectionClient
 import com.yepanywhere.android.core.repository.RelayPushPayloadSource
 import com.yepanywhere.android.core.repository.SessionsRepository
 import com.yepanywhere.android.core.usecase.ObserveSupervisorShellUseCase
+import com.yepanywhere.android.core.usecase.SecureRelayAuthHandshakeResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,6 +44,29 @@ class InMemorySupervisorRuntime(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     supervisorPushPayloadSource: RelayPushPayloadSource = object : RelayPushPayloadSource {
         override fun payloadStream(): Flow<SupervisorPushPayload> = emptyFlow()
+    },
+    private val relayAuthHandshake: suspend (
+        username: String,
+        password: String,
+        relayUrl: String,
+        storedSession: StoredRelaySession?,
+    ) -> SecureRelayAuthHandshakeResult = { username, _, relayUrl, _ ->
+        SecureRelayAuthHandshakeResult(
+            session = RelaySession(
+                username = username,
+                relayUrl = relayUrl,
+                sessionId = "relay-session-demo",
+            ),
+            persistedSession = StoredRelaySession(
+                wsUrl = relayUrl,
+                username = username,
+                sessionId = "relay-session-demo",
+                sessionKey = "demo-session-key",
+            ),
+            clearedStoredSession = false,
+            transportNonce = null,
+            resumed = false,
+        )
     },
 ) {
     private val initialTimeline = initialSnapshot.timeline
@@ -65,18 +89,23 @@ class InMemorySupervisorRuntime(
             password: String,
             relayUrl: String,
         ): RelaySession {
-            val session = RelaySession(
-                username = username,
-                relayUrl = relayUrl,
-                sessionId = "relay-session-demo",
-            )
+            connectionState.value = RelayConnectionStatus.CONNECTING
+            val result = try {
+                relayAuthHandshake(username, password, relayUrl, storedSecureSession.value)
+            } catch (error: Throwable) {
+                connectionState.value = RelayConnectionStatus.DISCONNECTED
+                throw error
+            }
+
+            if (result.clearedStoredSession) {
+                storedSecureSession.value = null
+            }
+            result.persistedSession?.let { persistedSession ->
+                storedSecureSession.value = persistedSession
+            }
+
+            val session = result.session
             storedSession.value = session
-            storedSecureSession.value = StoredRelaySession(
-                wsUrl = relayUrl,
-                username = username,
-                sessionId = session.sessionId ?: "relay-session-demo",
-                sessionKey = "demo-session-key",
-            )
             connectionState.value = RelayConnectionStatus.CONNECTED
             return session
         }

@@ -4,6 +4,7 @@ import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.model.SupervisorPushPayload
 import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.repository.RelayPushPayloadSource
+import com.yepanywhere.android.core.usecase.SecureRelayAuthHandshakeResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.take
@@ -19,6 +20,88 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class InMemorySupervisorRuntimeTest {
+    @Test
+    fun loginUsesInjectedRelayAuthHandshakeResult() = runTest(UnconfinedTestDispatcher()) {
+        val runtime = InMemorySupervisorRuntime(
+            scope = backgroundScope,
+            relayAuthHandshake = { username, password, relayUrl, storedSession ->
+                assertEquals("demo@yepanywhere", username)
+                assertEquals("secret", password)
+                assertEquals("wss://relay.yepanywhere.local", relayUrl)
+                assertEquals(null, storedSession)
+                SecureRelayAuthHandshakeResult(
+                    session = com.yepanywhere.android.core.model.RelaySession(
+                        username = username,
+                        relayUrl = relayUrl,
+                        sessionId = "relay-session-real",
+                    ),
+                    persistedSession = StoredRelaySession(
+                        wsUrl = relayUrl,
+                        username = username,
+                        sessionId = "relay-session-real",
+                        sessionKey = "persisted-session-key",
+                    ),
+                    clearedStoredSession = false,
+                    transportNonce = "transport-nonce",
+                    resumed = false,
+                )
+            },
+        )
+
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        assertEquals(
+            StoredRelaySession(
+                wsUrl = "wss://relay.yepanywhere.local",
+                username = "demo@yepanywhere",
+                sessionId = "relay-session-real",
+                sessionKey = "persisted-session-key",
+            ),
+            runtime.relayAuthRepository.restoreStoredSession(),
+        )
+    }
+
+    @Test
+    fun loginClearsStoredSecureSessionWhenHandshakeRequestsClear() = runTest(UnconfinedTestDispatcher()) {
+        val runtime = InMemorySupervisorRuntime(
+            scope = backgroundScope,
+            relayAuthHandshake = { username, _, relayUrl, _ ->
+                SecureRelayAuthHandshakeResult(
+                    session = com.yepanywhere.android.core.model.RelaySession(
+                        username = username,
+                        relayUrl = relayUrl,
+                        sessionId = "relay-session-fresh",
+                    ),
+                    persistedSession = null,
+                    clearedStoredSession = true,
+                    transportNonce = null,
+                    resumed = true,
+                )
+            },
+        )
+
+        runtime.relayAuthRepository.persistStoredSession(
+            StoredRelaySession(
+                wsUrl = "wss://relay.yepanywhere.local",
+                username = "demo@yepanywhere",
+                sessionId = "relay-session-demo",
+                sessionKey = "demo-session-key",
+            ),
+        )
+
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        assertEquals(null, runtime.relayAuthRepository.restoreStoredSession())
+    }
+
     @Test
     fun loginPersistsStoredSecureRelaySession() = runTest(UnconfinedTestDispatcher()) {
         val runtime = InMemorySupervisorRuntime(
