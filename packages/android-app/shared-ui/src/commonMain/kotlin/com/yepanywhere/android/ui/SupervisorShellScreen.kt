@@ -144,9 +144,18 @@ fun SupervisorShellScreen(
                 SummaryStrip(snapshot = state.snapshot)
 
                 when (state.selectedSection) {
-                    SupervisorShellSection.PROJECTS -> ProjectsSection(projectsState)
-                    SupervisorShellSection.SESSIONS -> SessionsSection(sessionsState)
-                    SupervisorShellSection.INBOX -> InboxSection(inboxState)
+                    SupervisorShellSection.PROJECTS -> ProjectsSection(
+                        state = projectsState,
+                        connectionStatus = state.snapshot.connectionStatus,
+                    )
+                    SupervisorShellSection.SESSIONS -> SessionsSection(
+                        state = sessionsState,
+                        connectionStatus = state.snapshot.connectionStatus,
+                    )
+                    SupervisorShellSection.INBOX -> InboxSection(
+                        state = inboxState,
+                        connectionStatus = state.snapshot.connectionStatus,
+                    )
                     SupervisorShellSection.ACTIVE -> ActiveSessionSection(
                         state = activeSessionState,
                         callbacks = activeSessionCallbacks,
@@ -248,11 +257,19 @@ private fun SummaryChip(
 }
 
 @Composable
-private fun ProjectsSection(state: ProjectsScreenState) {
+private fun ProjectsSection(
+    state: ProjectsScreenState,
+    connectionStatus: RelayConnectionStatus,
+) {
+    val emptyState = listSectionEmptyState(
+        connectionStatus = connectionStatus,
+        singularName = "project",
+    )
     SectionList(
         title = state.title,
         subtitle = state.subtitle,
         items = state.projects,
+        emptyState = emptyState,
     ) { project ->
         ListCard(
             title = project.name,
@@ -262,11 +279,19 @@ private fun ProjectsSection(state: ProjectsScreenState) {
 }
 
 @Composable
-private fun SessionsSection(state: SessionsScreenState) {
+private fun SessionsSection(
+    state: SessionsScreenState,
+    connectionStatus: RelayConnectionStatus,
+) {
+    val emptyState = listSectionEmptyState(
+        connectionStatus = connectionStatus,
+        singularName = "session",
+    )
     SectionList(
         title = state.title,
         subtitle = state.subtitle,
         items = state.sessions,
+        emptyState = emptyState,
     ) { session ->
         ListCard(
             title = session.title,
@@ -277,11 +302,19 @@ private fun SessionsSection(state: SessionsScreenState) {
 }
 
 @Composable
-private fun InboxSection(state: InboxScreenState) {
+private fun InboxSection(
+    state: InboxScreenState,
+    connectionStatus: RelayConnectionStatus,
+) {
+    val emptyState = listSectionEmptyState(
+        connectionStatus = connectionStatus,
+        singularName = "inbox item",
+    )
     SectionList(
         title = state.title,
         subtitle = state.subtitle,
         items = state.items,
+        emptyState = emptyState,
     ) { item ->
         ListCard(
             title = item.title,
@@ -317,6 +350,10 @@ private fun ActiveSessionSection(
             title = "Pending actions",
             subtitle = "Approval and ask-user-question requests that need immediate handling.",
             items = state.pendingRequests,
+            emptyState = SectionEmptyState(
+                title = "No pending actions",
+                body = "Requests that require approval or answers will appear here.",
+            ),
         ) { request ->
             PendingRequestCard(
                 request = request,
@@ -329,6 +366,10 @@ private fun ActiveSessionSection(
             title = "Timeline",
             subtitle = "Current session transcript placeholder for Android UI iteration.",
             items = state.timeline.messages,
+            emptyState = SectionEmptyState(
+                title = "Timeline is empty",
+                body = "New messages will appear here after reconnect and refresh.",
+            ),
         ) { message ->
             MessageCard(message)
         }
@@ -601,20 +642,83 @@ private fun <T> SectionList(
     title: String,
     subtitle: String,
     items: List<T>,
+    emptyState: SectionEmptyState? = null,
     itemContent: @Composable (T) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle(title = title, subtitle = subtitle)
 
+        if (items.isEmpty() && emptyState != null) {
+            EmptyStateCard(
+                title = emptyState.title,
+                body = emptyState.body,
+            )
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items.forEach { item ->
+                    itemContent(item)
+                }
+            }
+        }
+    }
+}
+
+private data class SectionEmptyState(
+    val title: String,
+    val body: String,
+)
+
+private fun listSectionEmptyState(
+    connectionStatus: RelayConnectionStatus,
+    singularName: String,
+): SectionEmptyState {
+    return when (connectionStatus) {
+        RelayConnectionStatus.CONNECTING,
+        RelayConnectionStatus.SYNCING,
+        -> SectionEmptyState(
+            title = "Loading ${singularName}s",
+            body = "Waiting for relay sync to complete.",
+        )
+
+        RelayConnectionStatus.DISCONNECTED -> SectionEmptyState(
+            title = "Offline snapshot",
+            body = "No cached ${singularName}s are available yet.",
+        )
+
+        RelayConnectionStatus.CONNECTED -> SectionEmptyState(
+            title = "No ${singularName}s yet",
+            body = "New ${singularName}s will appear here when available.",
+        )
+    }
+}
+
+@Composable
+private fun EmptyStateCard(
+    title: String,
+    body: String,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            items.forEach { item ->
-                itemContent(item)
-            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

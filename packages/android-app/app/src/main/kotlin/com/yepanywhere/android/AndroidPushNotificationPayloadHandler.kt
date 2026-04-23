@@ -21,6 +21,26 @@ class AndroidPushNotificationPayloadHandler(
         }
     }
 
+    fun handleDataPayload(
+        data: Map<String, String>,
+        title: String? = null,
+        body: String? = null,
+    ): Boolean {
+        val route = AndroidNotificationRoute.fromData(data) ?: return false
+        val routeData = buildMap {
+            put("target", data["target"] ?: route.section.toTarget())
+            route.projectId?.let { put("projectId", it) }
+            route.sessionId?.let { put("sessionId", it) }
+            route.inboxItemId?.let { put("inboxItemId", it) }
+        }
+
+        return dispatchNotification(
+            title ?: data["projectName"],
+            body ?: data["summary"] ?: data["message"],
+            routeData,
+        )
+    }
+
     private fun handlePendingInput(event: SupervisorPushEvent.PendingInput): Boolean {
         val routeData = buildMap {
             put("target", "inbox")
@@ -61,5 +81,14 @@ class AndroidPushNotificationPayloadHandler(
 
     private fun handleDismiss(event: SupervisorPushEvent.Dismiss): Boolean {
         return dismissSessionNotifications(event.sessionId)
+    }
+}
+
+private fun com.yepanywhere.android.ui.SupervisorShellSection.toTarget(): String {
+    return when (this) {
+        com.yepanywhere.android.ui.SupervisorShellSection.PROJECTS -> "projects"
+        com.yepanywhere.android.ui.SupervisorShellSection.SESSIONS -> "sessions"
+        com.yepanywhere.android.ui.SupervisorShellSection.INBOX -> "inbox"
+        com.yepanywhere.android.ui.SupervisorShellSection.ACTIVE -> "session"
     }
 }

@@ -84,6 +84,12 @@ android {
             excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 kotlin {
@@ -105,12 +111,16 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.bouncycastle.bcprov)
     implementation(libs.tweetnacl.java)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.firebase.messaging)
 
     debugImplementation(compose.uiTooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.robolectric)
 
     androidTestImplementation(libs.androidx.compose.ui.test)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

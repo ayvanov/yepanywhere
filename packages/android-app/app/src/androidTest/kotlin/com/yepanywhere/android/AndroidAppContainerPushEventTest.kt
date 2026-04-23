@@ -7,7 +7,6 @@ import com.yepanywhere.android.core.model.SupervisorPushPayload
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,9 +37,18 @@ class AndroidAppContainerPushEventTest {
                 requestId = "request-container",
             ),
         )
-        advanceUntilIdle()
+        val deadline = System.currentTimeMillis() + 5_000
+        while (
+            System.currentTimeMillis() < deadline &&
+            container.androidDataLayer.shellState.value.pendingRequests.none { request ->
+                request.id == "request-container" && request.sessionId == "session-container"
+            }
+        ) {
+            Thread.sleep(50)
+        }
 
         assertTrue(
+            "pending request from foreground push payload was not observed",
             container.androidDataLayer.shellState.value.pendingRequests.any { request ->
                 request.id == "request-container" &&
                     request.sessionId == "session-container"

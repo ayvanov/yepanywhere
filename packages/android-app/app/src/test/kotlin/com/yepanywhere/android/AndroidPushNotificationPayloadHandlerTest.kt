@@ -109,4 +109,41 @@ class AndroidPushNotificationPayloadHandlerTest {
         assertTrue(handler.handle(SupervisorPushEvent.Dismiss(sessionId = "session-1")))
         assertEquals("session-1", dismissedSessionId)
     }
+
+    @Test
+    fun dataPayloadDispatchesRouteNotificationWithoutTypedEvent() {
+        var capturedTitle: String? = null
+        var capturedBody: String? = null
+        var capturedData: Map<String, String>? = null
+        val handler = AndroidPushNotificationPayloadHandler(
+            dispatchNotification = { title, body, data ->
+                capturedTitle = title
+                capturedBody = body
+                capturedData = data
+                true
+            },
+        )
+
+        assertTrue(
+            handler.handleDataPayload(
+                data = mapOf(
+                    "sessionId" to "session-1",
+                    "projectId" to "project-1",
+                    "projectName" to "Yep Anywhere",
+                    "summary" to "Tap to review",
+                ),
+            ),
+        )
+
+        assertEquals("Yep Anywhere", capturedTitle)
+        assertEquals("Tap to review", capturedBody)
+        assertEquals(
+            mapOf(
+                "target" to "session",
+                "projectId" to "project-1",
+                "sessionId" to "session-1",
+            ),
+            capturedData,
+        )
+    }
 }

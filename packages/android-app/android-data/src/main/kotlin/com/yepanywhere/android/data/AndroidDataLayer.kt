@@ -1,5 +1,6 @@
 package com.yepanywhere.android.data
 
+import com.yepanywhere.android.core.cache.SessionCacheStore
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.model.SupervisorPushPayload
@@ -34,7 +35,7 @@ interface SupervisorFeatureDependencies {
 }
 
 class AndroidDataLayer(
-    runtimeOverride: InMemorySupervisorRuntime? = null,
+    runtimeOverride: SupervisorRuntime? = null,
     relayAuthHandshake: (suspend (
         username: String,
         password: String?,
@@ -42,9 +43,25 @@ class AndroidDataLayer(
         storedSession: StoredRelaySession?,
     ) -> SecureRelayAuthHandshakeResult)? = null,
     private val relayAuthStateStore: RelayAuthStateStore = InMemoryRelayAuthStateStore(),
+    relayRoutingUsername: String? = null,
+    relayRealtimeGatewayOverride: RelayRealtimeGateway? = null,
+    cacheStoreOverride: SessionCacheStore? = null,
 ) : SupervisorShellDataSource, SupervisorFeatureDependencies {
-    private val runtime: InMemorySupervisorRuntime = runtimeOverride ?: if (relayAuthHandshake != null) {
-        InMemorySupervisorRuntime(relayAuthHandshake = relayAuthHandshake)
+    private val runtime: SupervisorRuntime = runtimeOverride ?: if (relayAuthHandshake != null) {
+        if (cacheStoreOverride != null) {
+            RelaySupervisorRuntime(
+                relayAuthHandshake = relayAuthHandshake,
+                relayRoutingUsername = relayRoutingUsername,
+                realtimeGatewayOverride = relayRealtimeGatewayOverride,
+                cacheStore = cacheStoreOverride,
+            )
+        } else {
+            RelaySupervisorRuntime(
+                relayAuthHandshake = relayAuthHandshake,
+                relayRoutingUsername = relayRoutingUsername,
+                realtimeGatewayOverride = relayRealtimeGatewayOverride,
+            )
+        }
     } else {
         InMemorySupervisorRuntime()
     }

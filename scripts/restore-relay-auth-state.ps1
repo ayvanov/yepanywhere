@@ -44,12 +44,12 @@ function Resolve-AdbPath {
 function Invoke-Adb {
     param(
         [string]$Adb,
-        [string[]]$Args
+        [string[]]$Arguments
     )
 
-    $output = & $Adb @Args 2>&1
+    $output = & $Adb @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
-        $joined = $Args -join " "
+        $joined = $Arguments -join " "
         $text = ($output | Out-String).Trim()
         throw "adb command failed ($LASTEXITCODE): adb $joined`n$text"
     }
@@ -66,7 +66,7 @@ function Resolve-Serial {
         return $RequestedSerial
     }
 
-    $devicesText = Invoke-Adb -Adb $Adb -Args @("devices")
+    $devicesText = Invoke-Adb -Adb $Adb -Arguments @("devices")
     $serials = @(
         $devicesText -split "`r?`n" |
             Where-Object { $_ -match "^\S+\s+device$" } |
@@ -106,14 +106,18 @@ function Resolve-BackupPath {
     $serialPattern = "relay_auth_state-$escapedSerial-*.xml"
     $genericPattern = "relay_auth_state-*.xml"
 
-    $serialMatches = Get-ChildItem -Path $env:TEMP -Filter $serialPattern -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTimeUtc -Descending
+    $serialMatches = @(
+        Get-ChildItem -Path $env:TEMP -Filter $serialPattern -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending
+    )
     if ($serialMatches -and $serialMatches.Count -gt 0) {
         return $serialMatches[0].FullName
     }
 
-    $genericMatches = Get-ChildItem -Path $env:TEMP -Filter $genericPattern -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTimeUtc -Descending
+    $genericMatches = @(
+        Get-ChildItem -Path $env:TEMP -Filter $genericPattern -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending
+    )
     if ($genericMatches -and $genericMatches.Count -gt 0) {
         return $genericMatches[0].FullName
     }
@@ -130,7 +134,7 @@ Write-Host "Using device: $serial"
 Write-Host "Using package: $Package"
 Write-Host "Using backup: $resolvedBackupPath"
 
-$pkgList = Invoke-Adb -Adb $adb -Args @("-s", $serial, "shell", "pm", "list", "packages", $Package)
+$pkgList = Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "shell", "pm", "list", "packages", $Package)
 if ($pkgList -notmatch [regex]::Escape("package:$Package")) {
     throw "Package '$Package' is not installed on device '$serial'."
 }
@@ -141,12 +145,13 @@ if ($backupContent -notmatch "<map") {
 }
 
 $prefsRelPath = "shared_prefs/relay_auth_state.xml"
+Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "shell", "run-as", $Package, "mkdir", "-p", "shared_prefs") | Out-Null
 $backupContent | & $adb -s $serial shell "run-as $Package sh -c 'cat > $prefsRelPath'"
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to restore relay_auth_state.xml from backup."
 }
 
-$devicePrefs = Invoke-Adb -Adb $adb -Args @("-s", $serial, "exec-out", "run-as", $Package, "cat", $prefsRelPath)
+$devicePrefs = Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "exec-out", "run-as", $Package, "cat", $prefsRelPath)
 if ($devicePrefs -notmatch "<map") {
     throw "Post-restore validation failed: app prefs XML missing on device."
 }
@@ -158,8 +163,8 @@ if ($SkipLaunch) {
     exit 0
 }
 
-Invoke-Adb -Adb $adb -Args @("-s", $serial, "shell", "am", "force-stop", $Package) | Out-Null
-Invoke-Adb -Adb $adb -Args @("-s", $serial, "shell", "monkey", "-p", $Package, "-c", "android.intent.category.LAUNCHER", "1") | Out-Null
+Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "shell", "am", "force-stop", $Package) | Out-Null
+Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "shell", "monkey", "-p", $Package, "-c", "android.intent.category.LAUNCHER", "1") | Out-Null
 
 if ($PostLaunchWaitSeconds -gt 0) {
     Start-Sleep -Seconds $PostLaunchWaitSeconds

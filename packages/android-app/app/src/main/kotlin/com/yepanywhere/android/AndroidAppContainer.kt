@@ -3,6 +3,7 @@ package com.yepanywhere.android
 import android.app.Application
 import androidx.lifecycle.ViewModelProvider
 import com.yepanywhere.android.data.AndroidDataLayer
+import com.yepanywhere.android.data.RoomSessionCacheStore
 import com.yepanywhere.android.core.usecase.AnswerQuestionUseCase
 import com.yepanywhere.android.core.usecase.ApproveRequestUseCase
 import com.yepanywhere.android.core.usecase.DenyRequestUseCase
@@ -30,9 +31,12 @@ class AndroidAppContainer(
         settings = relayAuthSettings,
         relayAuthRunner = effectiveRelayAuthRunner,
     )
+    private val sessionCacheStore = RoomSessionCacheStore.create(application)
     val androidDataLayer = AndroidDataLayer(
         relayAuthHandshake = relayAuthHandshakeExecutor::execute,
         relayAuthStateStore = AndroidSharedPreferencesRelayAuthStateStore(application),
+        relayRoutingUsername = relayAuthSettings.relayUsername,
+        cacheStoreOverride = sessionCacheStore,
     )
     private val notificationPoster = AndroidNotificationPoster(application)
     private val notificationEventDispatcher = AndroidNotificationEventDispatcher(notificationPoster)
@@ -43,6 +47,12 @@ class AndroidAppContainer(
     val supervisorPushEventHandler = AndroidSupervisorPushEventHandler(
         dataLayer = androidDataLayer,
         notificationPayloadHandler = pushNotificationPayloadHandler,
+    )
+    val pushTokenLifecycleManager = AndroidPushTokenLifecycleManager(
+        store = AndroidPushTokenStore(application),
+    )
+    val routeResyncOrchestrator = AndroidNotificationRouteResyncOrchestrator(
+        dataLayer = androidDataLayer,
     )
     val supervisorPushEventCollector = AndroidSupervisorPushEventCollector(
         eventStream = androidDataLayer.relayConnectionClient.supervisorPushEventStream(),

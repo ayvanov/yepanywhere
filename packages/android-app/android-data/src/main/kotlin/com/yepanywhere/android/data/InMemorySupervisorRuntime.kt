@@ -68,9 +68,9 @@ class InMemorySupervisorRuntime(
             resumed = false,
         )
     },
-) {
+) : SupervisorRuntime {
     private val initialTimeline = initialSnapshot.timeline
-    val activeSessionId: String = initialTimeline.sessionId
+    override val activeSessionId: String = initialTimeline.sessionId
     private val cache = InMemorySessionCacheStore(initialSnapshot)
     private val storedSession = MutableStateFlow<RelaySession?>(null)
     private val storedSecureSession = MutableStateFlow<StoredRelaySession?>(null)
@@ -83,7 +83,7 @@ class InMemorySupervisorRuntime(
     )
     private val supervisorPushEvents = SupervisorPushEventStreamAdapter(supervisorPushPayloads).events()
 
-    val relayAuthRepository: RelayAuthRepository = object : RelayAuthRepository {
+    override val relayAuthRepository: RelayAuthRepository = object : RelayAuthRepository {
         override suspend fun login(
             username: String,
             password: String?,
@@ -125,7 +125,7 @@ class InMemorySupervisorRuntime(
         }
     }
 
-    val relayConnectionClient: RelayConnectionClient = object : RelayConnectionClient {
+    override val relayConnectionClient: RelayConnectionClient = object : RelayConnectionClient {
         override val connectionState: Flow<RelayConnectionStatus> = this@InMemorySupervisorRuntime.connectionState
 
         override suspend fun connect(session: RelaySession) {
@@ -158,7 +158,7 @@ class InMemorySupervisorRuntime(
         override fun supervisorPushEventStream(): Flow<SupervisorPushEvent> = supervisorPushEvents
     }
 
-    val projectsRepository: ProjectsRepository = object : ProjectsRepository {
+    override val projectsRepository: ProjectsRepository = object : ProjectsRepository {
         override fun observeProjects(): Flow<List<ProjectSummary>> = cache.observeProjects()
 
         override suspend fun refreshProjects() {
@@ -167,7 +167,7 @@ class InMemorySupervisorRuntime(
         }
     }
 
-    val inboxRepository: InboxRepository = object : InboxRepository {
+    override val inboxRepository: InboxRepository = object : InboxRepository {
         override fun observeInboxItems(): Flow<List<InboxItem>> = cache.observeInboxItems()
 
         override suspend fun refreshInbox() {
@@ -176,7 +176,7 @@ class InMemorySupervisorRuntime(
         }
     }
 
-    val sessionsRepository: SessionsRepository = object : SessionsRepository {
+    override val sessionsRepository: SessionsRepository = object : SessionsRepository {
         override fun observeSessions(projectId: String?): Flow<List<SessionSummary>> {
             return cache.observeSessions(projectId)
         }
@@ -226,7 +226,7 @@ class InMemorySupervisorRuntime(
         }
     }
 
-    val approvalsRepository: ApprovalsRepository = object : ApprovalsRepository {
+    override val approvalsRepository: ApprovalsRepository = object : ApprovalsRepository {
         override fun observePendingApprovals(): Flow<List<PendingInputRequest>> {
             return cache.observePendingRequests()
         }
@@ -267,13 +267,13 @@ class InMemorySupervisorRuntime(
         approvalsRepository = approvalsRepository,
     )
 
-    val shellState = observeSupervisorShellUseCase(activeSessionId = initialTimeline.sessionId).stateIn(
+    override val shellState = observeSupervisorShellUseCase(activeSessionId = initialTimeline.sessionId).stateIn(
         scope = scope,
         started = SharingStarted.Eagerly,
         initialValue = initialSnapshot,
     )
 
-    suspend fun applyPendingInputNotification(
+    override suspend fun applyPendingInputNotification(
         sessionId: String,
         projectId: String,
         projectName: String,
@@ -348,7 +348,7 @@ class InMemorySupervisorRuntime(
         inboxInvalidations.tryEmit(Unit)
     }
 
-    suspend fun clearSessionAttention(sessionId: String) {
+    override suspend fun clearSessionAttention(sessionId: String) {
         cache.storePendingRequests(
             cache.observePendingRequests().first().filterNot { it.sessionId == sessionId },
         )
@@ -380,16 +380,16 @@ class InMemorySupervisorRuntime(
         inboxInvalidations.tryEmit(Unit)
     }
 
-    suspend fun emitSupervisorPushEvent(event: SupervisorPushEvent) {
+    override suspend fun emitSupervisorPushEvent(event: SupervisorPushEvent) {
         val payload = event.toPushPayload() ?: return
         localSupervisorPushPayloads.emit(payload)
     }
 
-    suspend fun emitSupervisorPushPayload(payload: SupervisorPushPayload) {
+    override suspend fun emitSupervisorPushPayload(payload: SupervisorPushPayload) {
         localSupervisorPushPayloads.emit(payload)
     }
 
-    suspend fun emitSupervisorPushPayload(payload: Map<String, String>): Boolean {
+    override suspend fun emitSupervisorPushPayload(payload: Map<String, String>): Boolean {
         val typedPayload = SupervisorPushPayload.fromFields(payload) ?: return false
         localSupervisorPushPayloads.emit(typedPayload)
         return true

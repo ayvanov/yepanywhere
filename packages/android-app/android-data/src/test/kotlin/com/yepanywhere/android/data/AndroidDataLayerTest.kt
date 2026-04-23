@@ -1,11 +1,18 @@
 package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.RelaySession
+import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.usecase.SecureRelayAuthHandshakeResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
@@ -18,9 +25,11 @@ class AndroidDataLayerTest {
         var callCount = 0
         var reconnectStoredSession: StoredRelaySession? = null
         val stateStore = InMemoryRelayAuthStateStore()
+        val relayGateway = FakeRelayRealtimeGateway()
         val createDataLayer = {
             AndroidDataLayer(
                 relayAuthStateStore = stateStore,
+                relayRealtimeGatewayOverride = relayGateway,
                 relayAuthHandshake = { username, password, relayUrl, storedSession ->
                     callCount += 1
                     if (callCount == 2) {
@@ -87,6 +96,7 @@ class AndroidDataLayerTest {
         var capturedPassword: String? = null
         var capturedRelayUrl: String? = null
         val dataLayer = AndroidDataLayer(
+            relayRealtimeGatewayOverride = FakeRelayRealtimeGateway(),
             relayAuthHandshake = { username, password, relayUrl, _ ->
                 capturedUsername = username
                 capturedPassword = password
@@ -128,6 +138,7 @@ class AndroidDataLayerTest {
         )
         val dataLayer = AndroidDataLayer(
             relayAuthStateStore = InMemoryRelayAuthStateStore(),
+            relayRealtimeGatewayOverride = FakeRelayRealtimeGateway(),
             relayAuthHandshake = { username, _, relayUrl, _ ->
                 handshakeCalls += 1
                 SecureRelayAuthHandshakeResult(
@@ -187,5 +198,58 @@ class AndroidDataLayerTest {
 
         assertFalse(dataLayer.shellState.value.sessions.first { it.id == "session-new" }.hasUnread)
         assertFalse(dataLayer.shellState.value.pendingRequests.any { it.id == "request-new" })
+    }
+
+    private class FakeRelayRealtimeGateway : RelayRealtimeGateway {
+        private val connection = MutableStateFlow(RelayConnectionStatus.DISCONNECTED)
+        private val events = MutableSharedFlow<RelayRealtimeEvent>()
+
+        override val connectionState: Flow<RelayConnectionStatus> = connection
+
+        override fun events(): Flow<RelayRealtimeEvent> = events
+
+        override suspend fun connect(
+            relayUrl: String,
+            storedSession: StoredRelaySession,
+        ) {
+            connection.value = RelayConnectionStatus.CONNECTED
+        }
+
+        override suspend fun disconnect() {
+            connection.value = RelayConnectionStatus.DISCONNECTED
+        }
+
+        override suspend fun ensureConnected() {
+            if (connection.value != RelayConnectionStatus.CONNECTED) {
+                throw IllegalStateException("not_connected")
+            }
+        }
+
+        override suspend fun request(
+            method: String,
+            path: String,
+            body: JsonElement?,
+        ): JsonElement {
+            return when (path) {
+                "/api/projects" -> JsonObject(mapOf("projects" to JsonArray(emptyList())))
+                "/api/inbox" -> JsonObject(
+                    mapOf(
+                        "needsAttention" to JsonArray(emptyList()),
+                        "active" to JsonArray(emptyList()),
+                        "recentActivity" to JsonArray(emptyList()),
+                        "unread8h" to JsonArray(emptyList()),
+                        "unread24h" to JsonArray(emptyList()),
+                    ),
+                )
+
+                else -> JsonObject(emptyMap())
+            }
+        }
+
+        override suspend fun subscribeSession(sessionId: String): String = "session-$sessionId"
+
+        override suspend fun subscribeActivity(): String = "activity"
+
+        override suspend fun unsubscribe(subscriptionId: String) = Unit
     }
 }

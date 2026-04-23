@@ -43,12 +43,12 @@ function Resolve-AdbPath {
 function Invoke-Adb {
     param(
         [string]$Adb,
-        [string[]]$Args
+        [string[]]$Arguments
     )
 
-    $output = & $Adb @Args 2>&1
+    $output = & $Adb @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
-        $joined = $Args -join " "
+        $joined = $Arguments -join " "
         $text = ($output | Out-String).Trim()
         throw "adb command failed ($LASTEXITCODE): adb $joined`n$text"
     }
@@ -65,7 +65,7 @@ function Resolve-Serial {
         return $RequestedSerial
     }
 
-    $devicesText = Invoke-Adb -Adb $Adb -Args @("devices")
+    $devicesText = Invoke-Adb -Adb $Adb -Arguments @("devices")
     $serials = @(
         $devicesText -split "`r?`n" |
             Where-Object { $_ -match "^\S+\s+device$" } |
@@ -116,13 +116,13 @@ Write-Host "Using adb: $adb"
 Write-Host "Using device: $serial"
 Write-Host "Using package: $Package"
 
-$pkgList = Invoke-Adb -Adb $adb -Args @("-s", $serial, "shell", "pm", "list", "packages", $Package)
+$pkgList = Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "shell", "pm", "list", "packages", $Package)
 if ($pkgList -notmatch [regex]::Escape("package:$Package")) {
     throw "Package '$Package' is not installed on device '$serial'."
 }
 
 $prefsRelPath = "shared_prefs/relay_auth_state.xml"
-$rawPrefs = Invoke-Adb -Adb $adb -Args @("-s", $serial, "exec-out", "run-as", $Package, "cat", $prefsRelPath)
+$rawPrefs = Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "exec-out", "run-as", $Package, "cat", $prefsRelPath)
 
 if ($rawPrefs -notmatch "name=`"stored_session`"") {
     throw "No stored_session entry found. First do a successful login/reconnect."
@@ -166,7 +166,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Failed to write modified prefs back to device."
 }
 
-$verifyPatched = Invoke-Adb -Adb $adb -Args @("-s", $serial, "exec-out", "run-as", $Package, "cat", $prefsRelPath)
+$verifyPatched = Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "exec-out", "run-as", $Package, "cat", $prefsRelPath)
 if ($verifyPatched -notmatch [regex]::Escape($brokenSessionId)) {
     throw "Patched sessionId was not persisted."
 }
@@ -180,14 +180,14 @@ if ($SkipLaunch) {
     exit 0
 }
 
-Invoke-Adb -Adb $adb -Args @("-s", $serial, "shell", "am", "force-stop", $Package) | Out-Null
-Invoke-Adb -Adb $adb -Args @("-s", $serial, "shell", "monkey", "-p", $Package, "-c", "android.intent.category.LAUNCHER", "1") | Out-Null
+Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "shell", "am", "force-stop", $Package) | Out-Null
+Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "shell", "monkey", "-p", $Package, "-c", "android.intent.category.LAUNCHER", "1") | Out-Null
 
 if ($PostLaunchWaitSeconds -gt 0) {
     Start-Sleep -Seconds $PostLaunchWaitSeconds
 }
 
-$postLaunch = Invoke-Adb -Adb $adb -Args @("-s", $serial, "exec-out", "run-as", $Package, "cat", $prefsRelPath)
+$postLaunch = Invoke-Adb -Adb $adb -Arguments @("-s", $serial, "exec-out", "run-as", $Package, "cat", $prefsRelPath)
 if ($postLaunch -match [regex]::Escape($brokenSessionId)) {
     Write-Warning "Broken stored_session is still present after launch. Check app state/logcat."
     exit 0

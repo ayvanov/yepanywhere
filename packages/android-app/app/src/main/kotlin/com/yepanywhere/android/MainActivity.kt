@@ -32,6 +32,7 @@ import com.yepanywhere.android.ui.ActiveSessionCallbacks
 import com.yepanywhere.android.ui.AndroidAppTheme
 import com.yepanywhere.android.ui.SupervisorShellScreen
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -101,7 +102,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyNotificationRoute(intent: Intent?) {
-        AndroidNotificationRoute.fromIntent(intent)?.let(shellViewModel::applyNotificationRoute)
+        AndroidNotificationRoute.fromIntent(intent)?.let { route ->
+            shellViewModel.applyNotificationRoute(route)
+            lifecycleScope.launch {
+                appContainer.routeResyncOrchestrator.resync(route)
+            }
+        }
     }
 
     private fun requestNotificationPermissionIfNeeded() {
