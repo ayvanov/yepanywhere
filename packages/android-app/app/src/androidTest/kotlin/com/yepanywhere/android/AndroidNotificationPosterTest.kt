@@ -59,6 +59,20 @@ class AndroidNotificationPosterTest {
         assertNotNull(notifiedNotification)
     }
 
+    @Test
+    fun cancelsNotificationById() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        var cancelledId: Int? = null
+        val poster = AndroidNotificationPoster(
+            context = context,
+            notifyNotification = { _, _ -> },
+            cancelNotification = { id -> cancelledId = id },
+        )
+
+        assertTrue(poster.cancel(notificationId = 7))
+        assertEquals(7, cancelledId)
+    }
+
     private fun sampleContent(): AndroidNotificationContent {
         return AndroidNotificationContent(
             title = "Approval needed",

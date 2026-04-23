@@ -11,12 +11,14 @@ class AndroidPushNotificationPayloadHandlerTest {
         var capturedTitle: String? = null
         var capturedBody: String? = null
         var capturedData: Map<String, String>? = null
-        val handler = AndroidPushNotificationPayloadHandler { title, body, data ->
-            capturedTitle = title
-            capturedBody = body
-            capturedData = data
-            true
-        }
+        val handler = AndroidPushNotificationPayloadHandler(
+            dispatchNotification = { title, body, data ->
+                capturedTitle = title
+                capturedBody = body
+                capturedData = data
+                true
+            },
+        )
 
         assertTrue(
             handler.handle(
@@ -49,11 +51,13 @@ class AndroidPushNotificationPayloadHandlerTest {
     fun sessionHaltedPayloadDispatchesSessionNotification() {
         var capturedBody: String? = null
         var capturedData: Map<String, String>? = null
-        val handler = AndroidPushNotificationPayloadHandler { _, body, data ->
-            capturedBody = body
-            capturedData = data
-            true
-        }
+        val handler = AndroidPushNotificationPayloadHandler(
+            dispatchNotification = { _, body, data ->
+                capturedBody = body
+                capturedData = data
+                true
+            },
+        )
 
         assertTrue(
             handler.handle(
@@ -81,13 +85,29 @@ class AndroidPushNotificationPayloadHandlerTest {
     @Test
     fun ignoresPayloadsThatDoNotCreateAndroidNotifications() {
         var dispatchCalls = 0
-        val handler = AndroidPushNotificationPayloadHandler { _, _, _ ->
-            dispatchCalls += 1
-            true
-        }
+        val handler = AndroidPushNotificationPayloadHandler(
+            dispatchNotification = { _, _, _ ->
+                dispatchCalls += 1
+                true
+            },
+        )
 
-        assertFalse(handler.handle(mapOf("type" to "dismiss", "sessionId" to "session-1")))
         assertFalse(handler.handle(mapOf("type" to "unknown")))
         assertEquals(0, dispatchCalls)
+    }
+
+    @Test
+    fun dismissPayloadCancelsSessionNotification() {
+        var dismissedSessionId: String? = null
+        val handler = AndroidPushNotificationPayloadHandler(
+            dispatchNotification = { _, _, _ -> true },
+            dismissSessionNotifications = { sessionId ->
+                dismissedSessionId = sessionId
+                true
+            },
+        )
+
+        assertTrue(handler.handle(mapOf("type" to "dismiss", "sessionId" to "session-1")))
+        assertEquals("session-1", dismissedSessionId)
     }
 }

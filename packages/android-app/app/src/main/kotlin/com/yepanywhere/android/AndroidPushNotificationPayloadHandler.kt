@@ -2,13 +2,19 @@ package com.yepanywhere.android
 
 class AndroidPushNotificationPayloadHandler(
     private val dispatchNotification: (String?, String?, Map<String, String>) -> Boolean,
+    private val dismissSessionNotifications: (String) -> Boolean = { false },
 ) {
     constructor(dispatcher: AndroidNotificationEventDispatcher) : this(dispatcher::dispatch)
+    constructor(
+        dispatcher: AndroidNotificationEventDispatcher,
+        poster: AndroidNotificationPoster,
+    ) : this(dispatcher::dispatch, poster::cancelSession)
 
     fun handle(payload: Map<String, String>): Boolean {
         return when (payload["type"]) {
             "pending-input" -> handlePendingInput(payload)
             "session-halted" -> handleSessionHalted(payload)
+            "dismiss" -> handleDismiss(payload)
             else -> false
         }
     }
@@ -53,5 +59,10 @@ class AndroidPushNotificationPayloadHandler(
             "idle" -> "Task stopped"
             else -> "Session stopped"
         }
+    }
+
+    private fun handleDismiss(payload: Map<String, String>): Boolean {
+        val sessionId = payload["sessionId"] ?: return false
+        return dismissSessionNotifications(sessionId)
     }
 }

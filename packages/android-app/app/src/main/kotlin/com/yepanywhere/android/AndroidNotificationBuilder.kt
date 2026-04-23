@@ -12,15 +12,20 @@ data class AndroidNotificationContent(
     val route: AndroidNotificationRoute,
 ) {
     fun notificationId(): Int {
+        route.sessionId?.let { return notificationIdForSession(it) }
+        route.projectId?.let { return "project|$it".hashCode() }
+
         return listOf(
             route.section.name,
-            route.projectId,
-            route.sessionId,
             route.inboxItemId,
         ).joinToString(separator = "|").hashCode()
     }
 
     companion object {
+        fun notificationIdForSession(sessionId: String): Int {
+            return "session|$sessionId".hashCode()
+        }
+
         fun fromPayload(
             title: String?,
             body: String?,

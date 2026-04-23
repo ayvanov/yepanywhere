@@ -16,10 +16,11 @@ class AndroidAppContainer(
     application: Application,
 ) {
     val androidDataLayer = AndroidDataLayer()
+    private val notificationPoster = AndroidNotificationPoster(application)
+    private val notificationEventDispatcher = AndroidNotificationEventDispatcher(notificationPoster)
     val pushNotificationPayloadHandler = AndroidPushNotificationPayloadHandler(
-        AndroidNotificationEventDispatcher(
-            AndroidNotificationPoster(application),
-        ),
+        dispatcher = notificationEventDispatcher,
+        poster = notificationPoster,
     )
     private val observeProjectsUseCase = ObserveProjectsUseCase(androidDataLayer.projectsRepository)
     private val observeSessionsUseCase = ObserveSessionsUseCase(androidDataLayer.sessionsRepository)

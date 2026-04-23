@@ -22,6 +22,9 @@ class AndroidNotificationPoster(
     private val notifyNotification: (Int, Notification) -> Unit = { id, notification ->
         context.getSystemService(NotificationManager::class.java).notify(id, notification)
     },
+    private val cancelNotification: (Int) -> Unit = { id ->
+        context.getSystemService(NotificationManager::class.java).cancel(id)
+    },
 ) {
     fun post(notificationId: Int, content: AndroidNotificationContent): Boolean {
         if (!hasPostPermission()) {
@@ -31,5 +34,15 @@ class AndroidNotificationPoster(
         return runCatching {
             notifyNotification(notificationId, notificationBuilder.build(content))
         }.isSuccess
+    }
+
+    fun cancel(notificationId: Int): Boolean {
+        return runCatching {
+            cancelNotification(notificationId)
+        }.isSuccess
+    }
+
+    fun cancelSession(sessionId: String): Boolean {
+        return cancel(AndroidNotificationContent.notificationIdForSession(sessionId))
     }
 }

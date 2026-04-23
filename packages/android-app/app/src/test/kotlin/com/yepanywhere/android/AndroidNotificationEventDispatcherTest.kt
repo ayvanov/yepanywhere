@@ -69,6 +69,31 @@ class AndroidNotificationEventDispatcherTest {
     }
 
     @Test
+    fun notificationIdGroupsDifferentTargetsForSameSession() {
+        val pendingInput = AndroidNotificationContent(
+            title = "Approval needed",
+            body = "Run: Bash",
+            route = AndroidNotificationRoute(
+                section = SupervisorShellSection.INBOX,
+                projectId = "project-1",
+                sessionId = "session-1",
+                inboxItemId = "request-1",
+            ),
+        )
+        val sessionHalted = AndroidNotificationContent(
+            title = "Yep Anywhere",
+            body = "Task stopped",
+            route = AndroidNotificationRoute(
+                section = SupervisorShellSection.ACTIVE,
+                projectId = "project-1",
+                sessionId = "session-1",
+            ),
+        )
+
+        assertEquals(pendingInput.notificationId(), sessionHalted.notificationId())
+    }
+
+    @Test
     fun rejectsPayloadWithoutRouteMetadata() {
         var postCalls = 0
         val dispatcher = AndroidNotificationEventDispatcher { _, _ ->
