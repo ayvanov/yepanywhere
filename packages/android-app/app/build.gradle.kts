@@ -18,6 +18,9 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "YEP_RELAY_AUTH_MODE", "\"demo\"")
+        buildConfigField("String", "YEP_RELAY_URL", "\"wss://relay.yepanywhere.local\"")
+        buildConfigField("String", "YEP_RELAY_USERNAME", "\"\"")
     }
 
     buildTypes {
@@ -41,6 +44,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
