@@ -66,19 +66,26 @@ function Resolve-Serial {
     }
 
     $devicesText = Invoke-Adb -Adb $Adb -Args @("devices")
-    $serials = $devicesText -split "`r?`n" |
-        Where-Object { $_ -match "^\S+\s+device$" } |
-        ForEach-Object { ($_ -split "\s+")[0] }
-
-    if ($serials.Count -eq 1) {
-        return $serials[0]
-    }
+    $serials = @(
+        $devicesText -split "`r?`n" |
+            Where-Object { $_ -match "^\S+\s+device$" } |
+            ForEach-Object { ($_ -split "\s+")[0] }
+    )
 
     if ($serials.Count -eq 0) {
         throw "No connected adb devices."
     }
 
-    throw "Multiple adb devices found: $($serials -join ", "). Pass -Serial."
+    $emulatorSerials = @($serials | Where-Object { $_ -like "emulator-*" })
+    if ($emulatorSerials.Count -eq 1) {
+        return $emulatorSerials[0]
+    }
+
+    if ($emulatorSerials.Count -gt 1) {
+        throw "Multiple emulators found: $($emulatorSerials -join ", "). Pass -Serial."
+    }
+
+    throw "No emulator found among connected adb devices: $($serials -join ", "). Pass -Serial explicitly."
 }
 
 function Replace-Once {
@@ -187,4 +194,3 @@ if ($postLaunch -match [regex]::Escape($brokenSessionId)) {
 }
 
 Write-Host "stored_session rotated after launch. Resume fallback appears to be working."
-

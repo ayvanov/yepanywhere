@@ -15,6 +15,10 @@ Native Android client scaffold for Yep Anywhere.
 ./gradlew :app:assembleDebug
 ./gradlew :app:installDebug
 ./gradlew test
+# from repo root: picks a connected emulator and ignores physical devices by default
+pwsh ./scripts/run-android-connected-tests.ps1
+# single instrumentation class
+pwsh ./scripts/run-android-connected-tests.ps1 -TestClass com.yepanywhere.android.RelayLoginScreenTest
 ```
 
 ## Notes
