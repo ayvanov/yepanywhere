@@ -17,8 +17,16 @@ import kotlinx.coroutines.Dispatchers
 class AndroidAppContainer(
     application: Application,
     pushEventDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    relayAuthSettings: AndroidRelayAuthSettings = AndroidRelayAuthSettings.fromBuildConfig(),
+    relayAuthRunner: AndroidRelayAuthRunner? = null,
 ) {
-    val androidDataLayer = AndroidDataLayer()
+    private val relayAuthHandshakeExecutor = AndroidRelayAuthHandshakeExecutor(
+        settings = relayAuthSettings,
+        relayAuthRunner = relayAuthRunner,
+    )
+    val androidDataLayer = AndroidDataLayer(
+        relayAuthHandshake = relayAuthHandshakeExecutor::execute,
+    )
     private val notificationPoster = AndroidNotificationPoster(application)
     private val notificationEventDispatcher = AndroidNotificationEventDispatcher(notificationPoster)
     val pushNotificationPayloadHandler = AndroidPushNotificationPayloadHandler(
