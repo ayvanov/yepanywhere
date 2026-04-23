@@ -13,8 +13,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.lifecycle.lifecycleScope
 import com.yepanywhere.android.ui.ActiveSessionCallbacks
 import com.yepanywhere.android.ui.SupervisorShellScreen
+import kotlinx.coroutines.Job
 
 class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -41,6 +43,7 @@ class MainActivity : ComponentActivity() {
     private val activeSessionViewModel: ActiveSessionViewModel by viewModels {
         appContainer.createActiveSessionViewModelFactory()
     }
+    private var foregroundPushEventJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,6 +60,19 @@ class MainActivity : ComponentActivity() {
                 activeSessionViewModel = activeSessionViewModel,
             )
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (foregroundPushEventJob?.isActive != true) {
+            foregroundPushEventJob = appContainer.supervisorPushEventCollector.start(lifecycleScope)
+        }
+    }
+
+    override fun onStop() {
+        foregroundPushEventJob?.cancel()
+        foregroundPushEventJob = null
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {
