@@ -1,6 +1,7 @@
 package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
+import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.repository.ApprovalsRepository
 import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
@@ -62,8 +63,8 @@ class AndroidDataLayer(
         runtime.clearSessionAttention(sessionId)
     }
 
-    suspend fun emitSupervisorPushEvent(payload: Map<String, String>) {
-        runtime.emitSupervisorPushEvent(payload)
+    suspend fun emitSupervisorPushEvent(event: SupervisorPushEvent) {
+        runtime.emitSupervisorPushEvent(event)
     }
 
     companion object {

@@ -1,5 +1,7 @@
 package com.yepanywhere.android
 
+import com.yepanywhere.android.core.model.SupervisorPushEvent
+
 class AndroidPushNotificationPayloadHandler(
     private val dispatchNotification: (String?, String?, Map<String, String>) -> Boolean,
     private val dismissSessionNotifications: (String) -> Boolean = { false },
@@ -10,44 +12,40 @@ class AndroidPushNotificationPayloadHandler(
         poster: AndroidNotificationPoster,
     ) : this(dispatcher::dispatch, poster::cancelSession)
 
-    fun handle(payload: Map<String, String>): Boolean {
-        return when (payload["type"]) {
-            "pending-input" -> handlePendingInput(payload)
-            "session-halted" -> handleSessionHalted(payload)
-            "dismiss" -> handleDismiss(payload)
+    fun handle(event: SupervisorPushEvent): Boolean {
+        return when (event) {
+            is SupervisorPushEvent.PendingInput -> handlePendingInput(event)
+            is SupervisorPushEvent.SessionHalted -> handleSessionHalted(event)
+            is SupervisorPushEvent.Dismiss -> handleDismiss(event)
             else -> false
         }
     }
 
-    private fun handlePendingInput(payload: Map<String, String>): Boolean {
-        val sessionId = payload["sessionId"] ?: return false
-        val projectId = payload["projectId"] ?: return false
+    private fun handlePendingInput(event: SupervisorPushEvent.PendingInput): Boolean {
         val routeData = buildMap {
             put("target", "inbox")
-            put("projectId", projectId)
-            put("sessionId", sessionId)
-            payload["requestId"]?.let { put("inboxItemId", it) }
+            put("projectId", event.projectId)
+            put("sessionId", event.sessionId)
+            event.requestId?.let { put("inboxItemId", it) }
         }
 
         return dispatchNotification(
-            payload["projectName"],
-            payload["summary"] ?: "Waiting for input",
+            event.projectName,
+            event.summary,
             routeData,
         )
     }
 
-    private fun handleSessionHalted(payload: Map<String, String>): Boolean {
-        val sessionId = payload["sessionId"] ?: return false
-        val projectId = payload["projectId"] ?: return false
+    private fun handleSessionHalted(event: SupervisorPushEvent.SessionHalted): Boolean {
         val routeData = mapOf(
             "target" to "session",
-            "projectId" to projectId,
-            "sessionId" to sessionId,
+            "projectId" to event.projectId,
+            "sessionId" to event.sessionId,
         )
 
         return dispatchNotification(
-            payload["projectName"],
-            sessionHaltedBody(payload["reason"]),
+            event.projectName,
+            sessionHaltedBody(event.reason),
             routeData,
         )
     }
@@ -61,8 +59,7 @@ class AndroidPushNotificationPayloadHandler(
         }
     }
 
-    private fun handleDismiss(payload: Map<String, String>): Boolean {
-        val sessionId = payload["sessionId"] ?: return false
-        return dismissSessionNotifications(sessionId)
+    private fun handleDismiss(event: SupervisorPushEvent.Dismiss): Boolean {
+        return dismissSessionNotifications(event.sessionId)
     }
 }

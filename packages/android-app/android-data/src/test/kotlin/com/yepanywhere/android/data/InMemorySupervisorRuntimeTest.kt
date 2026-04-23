@@ -1,5 +1,6 @@
 package com.yepanywhere.android.data
 
+import com.yepanywhere.android.core.model.SupervisorPushEvent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -111,19 +112,22 @@ class InMemorySupervisorRuntimeTest {
         val runtime = InMemorySupervisorRuntime(
             scope = backgroundScope,
         )
-        val payload = mapOf(
-            "type" to "pending-input",
-            "sessionId" to "session-stream",
-            "requestId" to "request-stream",
+        val event = SupervisorPushEvent.PendingInput(
+            sessionId = "session-stream",
+            projectId = "project-stream",
+            projectName = "Stream Project",
+            inputType = "user-question",
+            summary = "Stream question",
+            requestId = "request-stream",
         )
-        val events = mutableListOf<Map<String, String>>()
+        val events = mutableListOf<SupervisorPushEvent>()
 
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             runtime.relayConnectionClient.supervisorPushEventStream().take(1).toList(events)
         }
-        runtime.emitSupervisorPushEvent(payload)
+        runtime.emitSupervisorPushEvent(event)
         advanceUntilIdle()
 
-        assertEquals(listOf(payload), events)
+        assertEquals(listOf<SupervisorPushEvent>(event), events)
     }
 }

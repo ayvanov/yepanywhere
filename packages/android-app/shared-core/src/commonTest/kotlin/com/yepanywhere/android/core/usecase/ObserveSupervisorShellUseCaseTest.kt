@@ -11,6 +11,7 @@ import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.repository.ApprovalsRepository
 import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
@@ -119,7 +120,7 @@ class ObserveSupervisorShellUseCaseTest {
 
         override fun inboxInvalidationStream(): Flow<Unit> = MutableSharedFlow()
 
-        override fun supervisorPushEventStream(): Flow<Map<String, String>> = emptyFlow()
+        override fun supervisorPushEventStream(): Flow<SupervisorPushEvent> = emptyFlow()
     }
 
     private class FakeProjectsRepository(

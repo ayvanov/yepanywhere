@@ -1,9 +1,10 @@
 package com.yepanywhere.android
 
+import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.data.AndroidDataLayer
 
 class AndroidSupervisorPushEventHandler(
-    private val handleNotificationPayload: (Map<String, String>) -> Boolean,
+    private val handleNotificationPayload: (SupervisorPushEvent) -> Boolean,
     private val applyPendingInputNotification: suspend (
         sessionId: String,
         projectId: String,
@@ -23,23 +24,24 @@ class AndroidSupervisorPushEventHandler(
         clearSessionAttention = dataLayer::clearSessionAttention,
     )
 
-    suspend fun handle(payload: Map<String, String>): Boolean {
-        when (payload["type"]) {
-            "pending-input" -> applyPendingInputPayload(payload)
-            "dismiss" -> payload["sessionId"]?.let { clearSessionAttention(it) }
+    suspend fun handle(event: SupervisorPushEvent): Boolean {
+        when (event) {
+            is SupervisorPushEvent.PendingInput -> applyPendingInputPayload(event)
+            is SupervisorPushEvent.Dismiss -> clearSessionAttention(event.sessionId)
+            else -> Unit
         }
 
-        return handleNotificationPayload(payload)
+        return handleNotificationPayload(event)
     }
 
-    private suspend fun applyPendingInputPayload(payload: Map<String, String>) {
+    private suspend fun applyPendingInputPayload(event: SupervisorPushEvent.PendingInput) {
         applyPendingInputNotification(
-            payload["sessionId"] ?: return,
-            payload["projectId"] ?: return,
-            payload["projectName"] ?: "Yep Anywhere",
-            payload["inputType"] ?: "user-question",
-            payload["summary"] ?: "Waiting for input",
-            payload["requestId"] ?: return,
+            event.sessionId,
+            event.projectId,
+            event.projectName,
+            event.inputType,
+            event.summary,
+            event.requestId ?: return,
         )
     }
 }

@@ -1,5 +1,6 @@
 package com.yepanywhere.android
 
+import com.yepanywhere.android.core.model.SupervisorPushEvent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,7 +12,7 @@ class AndroidSupervisorPushEventHandlerTest {
         val calls = mutableListOf<String>()
         val handler = AndroidSupervisorPushEventHandler(
             handleNotificationPayload = {
-                calls += "notify:${it["type"]}"
+                calls += "notify:${it.type}"
                 true
             },
             applyPendingInputNotification = { sessionId, projectId, projectName, inputType, summary, requestId ->
@@ -22,14 +23,13 @@ class AndroidSupervisorPushEventHandlerTest {
 
         assertTrue(
             handler.handle(
-                mapOf(
-                    "type" to "pending-input",
-                    "sessionId" to "session-1",
-                    "projectId" to "project-1",
-                    "projectName" to "Yep Anywhere",
-                    "inputType" to "tool-approval",
-                    "summary" to "Run: Bash",
-                    "requestId" to "request-1",
+                SupervisorPushEvent.PendingInput(
+                    sessionId = "session-1",
+                    projectId = "project-1",
+                    projectName = "Yep Anywhere",
+                    inputType = "tool-approval",
+                    summary = "Run: Bash",
+                    requestId = "request-1",
                 ),
             ),
         )
@@ -48,7 +48,7 @@ class AndroidSupervisorPushEventHandlerTest {
         val calls = mutableListOf<String>()
         val handler = AndroidSupervisorPushEventHandler(
             handleNotificationPayload = {
-                calls += "notify:${it["type"]}"
+                calls += "notify:${it.type}"
                 true
             },
             applyPendingInputNotification = { _, _, _, _, _, _ -> },
@@ -57,10 +57,7 @@ class AndroidSupervisorPushEventHandlerTest {
 
         assertTrue(
             handler.handle(
-                mapOf(
-                    "type" to "dismiss",
-                    "sessionId" to "session-1",
-                ),
+                SupervisorPushEvent.Dismiss(sessionId = "session-1"),
             ),
         )
 

@@ -1,5 +1,6 @@
 package com.yepanywhere.android
 
+import com.yepanywhere.android.core.model.SupervisorPushEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -22,14 +23,13 @@ class AndroidPushNotificationPayloadHandlerTest {
 
         assertTrue(
             handler.handle(
-                mapOf(
-                    "type" to "pending-input",
-                    "sessionId" to "session-1",
-                    "projectId" to "project-1",
-                    "projectName" to "Yep Anywhere",
-                    "inputType" to "tool-approval",
-                    "summary" to "Run: Bash",
-                    "requestId" to "request-1",
+                SupervisorPushEvent.PendingInput(
+                    sessionId = "session-1",
+                    projectId = "project-1",
+                    projectName = "Yep Anywhere",
+                    inputType = "tool-approval",
+                    summary = "Run: Bash",
+                    requestId = "request-1",
                 ),
             ),
         )
@@ -61,12 +61,11 @@ class AndroidPushNotificationPayloadHandlerTest {
 
         assertTrue(
             handler.handle(
-                mapOf(
-                    "type" to "session-halted",
-                    "sessionId" to "session-1",
-                    "projectId" to "project-1",
-                    "projectName" to "Yep Anywhere",
-                    "reason" to "error",
+                SupervisorPushEvent.SessionHalted(
+                    sessionId = "session-1",
+                    projectId = "project-1",
+                    projectName = "Yep Anywhere",
+                    reason = "error",
                 ),
             ),
         )
@@ -92,7 +91,7 @@ class AndroidPushNotificationPayloadHandlerTest {
             },
         )
 
-        assertFalse(handler.handle(mapOf("type" to "unknown")))
+        assertFalse(handler.handle(SupervisorPushEvent.Unknown(type = "unknown")))
         assertEquals(0, dispatchCalls)
     }
 
@@ -107,7 +106,7 @@ class AndroidPushNotificationPayloadHandlerTest {
             },
         )
 
-        assertTrue(handler.handle(mapOf("type" to "dismiss", "sessionId" to "session-1")))
+        assertTrue(handler.handle(SupervisorPushEvent.Dismiss(sessionId = "session-1")))
         assertEquals("session-1", dismissedSessionId)
     }
 }

@@ -7,6 +7,7 @@ import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.model.SupervisorPushEvent
 import kotlinx.coroutines.flow.Flow
 
 interface RelayAuthRepository {
@@ -34,7 +35,7 @@ interface RelayConnectionClient {
 
     fun inboxInvalidationStream(): Flow<Unit>
 
-    fun supervisorPushEventStream(): Flow<Map<String, String>>
+    fun supervisorPushEventStream(): Flow<SupervisorPushEvent>
 }
 
 interface ProjectsRepository {

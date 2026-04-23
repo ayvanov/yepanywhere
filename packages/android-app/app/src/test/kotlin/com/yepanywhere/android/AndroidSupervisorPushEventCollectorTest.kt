@@ -1,5 +1,6 @@
 package com.yepanywhere.android
 
+import com.yepanywhere.android.core.model.SupervisorPushEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -15,8 +16,8 @@ import kotlin.test.assertTrue
 class AndroidSupervisorPushEventCollectorTest {
     @Test
     fun collectsForegroundEventsUntilCancelled() = runTest {
-        val events = MutableSharedFlow<Map<String, String>>()
-        val handled = mutableListOf<Map<String, String>>()
+        val events = MutableSharedFlow<SupervisorPushEvent>()
+        val handled = mutableListOf<SupervisorPushEvent>()
         val collector = AndroidSupervisorPushEventCollector(
             eventStream = events,
             dispatcher = UnconfinedTestDispatcher(testScheduler),
@@ -27,33 +28,39 @@ class AndroidSupervisorPushEventCollectorTest {
         )
 
         val job = collector.start(backgroundScope)
-        events.emit(mapOf("type" to "pending-input", "sessionId" to "session-1"))
-        events.emit(mapOf("type" to "dismiss", "sessionId" to "session-1"))
+        val first = SupervisorPushEvent.PendingInput(
+            sessionId = "session-1",
+            projectId = "project-1",
+            requestId = "request-1",
+        )
+        val second = SupervisorPushEvent.Dismiss(sessionId = "session-1")
+        events.emit(first)
+        events.emit(second)
         advanceUntilIdle()
 
         job.cancel()
-        events.emit(mapOf("type" to "pending-input", "sessionId" to "session-2"))
+        events.emit(
+            SupervisorPushEvent.PendingInput(
+                sessionId = "session-2",
+                projectId = "project-2",
+                requestId = "request-2",
+            ),
+        )
         advanceUntilIdle()
 
-        assertEquals(
-            listOf(
-                mapOf("type" to "pending-input", "sessionId" to "session-1"),
-                mapOf("type" to "dismiss", "sessionId" to "session-1"),
-            ),
-            handled,
-        )
+        assertEquals(listOf(first, second), handled)
     }
 
     @Test
     fun keepsCollectingAfterHandlerFailure() = runTest {
-        val events = MutableSharedFlow<Map<String, String>>()
+        val events = MutableSharedFlow<SupervisorPushEvent>()
         val handledTypes = mutableListOf<String>()
         val collector = AndroidSupervisorPushEventCollector(
             eventStream = events,
             dispatcher = UnconfinedTestDispatcher(testScheduler),
             handleEvent = { event ->
-                handledTypes += event.getValue("type")
-                if (event["type"] == "bad") {
+                handledTypes += event.type
+                if (event.type == "bad") {
                     error("bad event")
                 }
                 true
@@ -61,8 +68,14 @@ class AndroidSupervisorPushEventCollectorTest {
         )
 
         val job = collector.start(backgroundScope)
-        events.emit(mapOf("type" to "bad"))
-        events.emit(mapOf("type" to "pending-input"))
+        events.emit(SupervisorPushEvent.Unknown(type = "bad"))
+        events.emit(
+            SupervisorPushEvent.PendingInput(
+                sessionId = "session-1",
+                projectId = "project-1",
+                requestId = "request-1",
+            ),
+        )
         advanceUntilIdle()
 
         assertTrue(job.isActive)
@@ -72,7 +85,7 @@ class AndroidSupervisorPushEventCollectorTest {
 
     @Test
     fun handlerCancellationStopsCollector() = runTest {
-        val events = MutableSharedFlow<Map<String, String>>()
+        val events = MutableSharedFlow<SupervisorPushEvent>()
         val collector = AndroidSupervisorPushEventCollector(
             eventStream = events,
             dispatcher = UnconfinedTestDispatcher(testScheduler),
@@ -82,7 +95,13 @@ class AndroidSupervisorPushEventCollectorTest {
         )
 
         val job = collector.start(backgroundScope)
-        events.emit(mapOf("type" to "pending-input"))
+        events.emit(
+            SupervisorPushEvent.PendingInput(
+                sessionId = "session-1",
+                projectId = "project-1",
+                requestId = "request-1",
+            ),
+        )
         advanceUntilIdle()
 
         assertFalse(job.isActive)

@@ -1,5 +1,6 @@
 package com.yepanywhere.android
 
+import com.yepanywhere.android.core.model.SupervisorPushEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -9,9 +10,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 class AndroidSupervisorPushEventCollector(
-    private val eventStream: Flow<Map<String, String>>,
+    private val eventStream: Flow<SupervisorPushEvent>,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
-    private val handleEvent: suspend (Map<String, String>) -> Boolean,
+    private val handleEvent: suspend (SupervisorPushEvent) -> Boolean,
 ) {
     fun start(scope: CoroutineScope): Job {
         return scope.launch(dispatcher) {
