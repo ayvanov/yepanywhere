@@ -1,7 +1,0 @@
-Starting: Intent { cmp=com.yepanywhere.android.debug/com.yepanywhere.android.MainActivity }
-Status: ok
-LaunchState: COLD
-Activity: com.google.android.permissioncontroller/com.android.permissioncontroller.permission.ui.GrantPermissionsActivity
-TotalTime: 1703
-WaitTime: 1705
-Complete
