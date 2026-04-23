@@ -68,6 +68,38 @@ class SupervisorShellViewModelTest {
         externalScope.cancel()
     }
 
+    @Test
+    fun appliesNotificationRouteBySelectingTargetSection() = runTest {
+        val source = FakeSupervisorShellDataSource()
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = SupervisorShellViewModel(
+            dataSource = source,
+            scope = externalScope,
+        )
+        val collectionJob = externalScope.launch {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.applyNotificationRoute(
+            AndroidNotificationRoute(section = SupervisorShellSection.INBOX),
+        )
+
+        advanceUntilIdle()
+
+        assertEquals(SupervisorShellSection.INBOX, viewModel.uiState.value.selectedSection)
+
+        viewModel.applyNotificationRoute(
+            AndroidNotificationRoute(section = SupervisorShellSection.ACTIVE, sessionId = "session-1"),
+        )
+
+        advanceUntilIdle()
+
+        assertEquals(SupervisorShellSection.ACTIVE, viewModel.uiState.value.selectedSection)
+
+        collectionJob.cancel()
+        externalScope.cancel()
+    }
+
     private class FakeSupervisorShellDataSource : SupervisorShellDataSource {
         override val summary: String = "Android-owned cache and secure relay session persistence."
         override val shellState = MutableStateFlow(defaultSupervisorShellSnapshot())

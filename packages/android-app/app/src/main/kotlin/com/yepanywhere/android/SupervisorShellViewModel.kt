@@ -47,6 +47,10 @@ class SupervisorShellViewModel(
         selectedSection.value = section
     }
 
+    fun applyNotificationRoute(route: AndroidNotificationRoute) {
+        selectSection(route.section)
+    }
+
     fun ensureDemoSessionConnected() {
         if (hasRequestedDemoConnect) {
             return
