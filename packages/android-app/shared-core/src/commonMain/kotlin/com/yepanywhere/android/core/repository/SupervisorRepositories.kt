@@ -33,6 +33,8 @@ interface RelayConnectionClient {
     fun sessionStream(sessionId: String): Flow<SessionTimeline>
 
     fun inboxInvalidationStream(): Flow<Unit>
+
+    fun supervisorPushEventStream(): Flow<Map<String, String>>
 }
 
 interface ProjectsRepository {

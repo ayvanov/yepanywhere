@@ -20,6 +20,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -117,6 +118,8 @@ class ObserveSupervisorShellUseCaseTest {
         }
 
         override fun inboxInvalidationStream(): Flow<Unit> = MutableSharedFlow()
+
+        override fun supervisorPushEventStream(): Flow<Map<String, String>> = emptyFlow()
     }
 
     private class FakeProjectsRepository(

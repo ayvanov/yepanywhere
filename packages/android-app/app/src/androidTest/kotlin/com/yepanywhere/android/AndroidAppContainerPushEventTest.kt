@@ -26,7 +26,7 @@ class AndroidAppContainerPushEventTest {
         )
         val job = container.supervisorPushEventCollector.start(backgroundScope)
 
-        container.foregroundPushEvents.emit(
+        container.androidDataLayer.emitSupervisorPushEvent(
             mapOf(
                 "type" to "pending-input",
                 "sessionId" to "session-container",

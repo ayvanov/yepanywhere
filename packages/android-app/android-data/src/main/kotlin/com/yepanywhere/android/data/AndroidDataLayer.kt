@@ -4,6 +4,7 @@ import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.core.repository.ApprovalsRepository
 import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
+import com.yepanywhere.android.core.repository.RelayConnectionClient
 import com.yepanywhere.android.core.repository.SessionsRepository
 import kotlinx.coroutines.flow.StateFlow
 
@@ -33,6 +34,7 @@ class AndroidDataLayer(
     override val sessionsRepository: SessionsRepository = runtime.sessionsRepository
     override val inboxRepository: InboxRepository = runtime.inboxRepository
     override val approvalsRepository: ApprovalsRepository = runtime.approvalsRepository
+    val relayConnectionClient: RelayConnectionClient = runtime.relayConnectionClient
 
     override suspend fun connectDemoSession() {
         runtime.connectDemoSession()
@@ -58,6 +60,10 @@ class AndroidDataLayer(
 
     suspend fun clearSessionAttention(sessionId: String) {
         runtime.clearSessionAttention(sessionId)
+    }
+
+    suspend fun emitSupervisorPushEvent(payload: Map<String, String>) {
+        runtime.emitSupervisorPushEvent(payload)
     }
 
     companion object {

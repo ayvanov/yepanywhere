@@ -13,14 +13,12 @@ import com.yepanywhere.android.core.usecase.ObserveSessionsUseCase
 import com.yepanywhere.android.core.usecase.SendSessionReplyUseCase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableSharedFlow
 
 class AndroidAppContainer(
     application: Application,
     pushEventDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     val androidDataLayer = AndroidDataLayer()
-    val foregroundPushEvents = MutableSharedFlow<Map<String, String>>(extraBufferCapacity = 64)
     private val notificationPoster = AndroidNotificationPoster(application)
     private val notificationEventDispatcher = AndroidNotificationEventDispatcher(notificationPoster)
     val pushNotificationPayloadHandler = AndroidPushNotificationPayloadHandler(
@@ -32,7 +30,7 @@ class AndroidAppContainer(
         notificationPayloadHandler = pushNotificationPayloadHandler,
     )
     val supervisorPushEventCollector = AndroidSupervisorPushEventCollector(
-        eventStream = foregroundPushEvents,
+        eventStream = androidDataLayer.relayConnectionClient.supervisorPushEventStream(),
         dispatcher = pushEventDispatcher,
         handleEvent = supervisorPushEventHandler::handle,
     )

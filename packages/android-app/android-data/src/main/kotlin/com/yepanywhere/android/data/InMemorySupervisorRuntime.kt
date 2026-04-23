@@ -41,6 +41,7 @@ class InMemorySupervisorRuntime(
     private val storedSession = MutableStateFlow<RelaySession?>(null)
     private val connectionState = MutableStateFlow(initialSnapshot.connectionStatus)
     private val inboxInvalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val supervisorPushEvents = MutableSharedFlow<Map<String, String>>(extraBufferCapacity = 64)
 
     val relayAuthRepository: RelayAuthRepository = object : RelayAuthRepository {
         override suspend fun login(
@@ -95,6 +96,8 @@ class InMemorySupervisorRuntime(
         }
 
         override fun inboxInvalidationStream(): Flow<Unit> = inboxInvalidations
+
+        override fun supervisorPushEventStream(): Flow<Map<String, String>> = supervisorPushEvents
     }
 
     val projectsRepository: ProjectsRepository = object : ProjectsRepository {
@@ -325,6 +328,10 @@ class InMemorySupervisorRuntime(
         )
 
         inboxInvalidations.tryEmit(Unit)
+    }
+
+    suspend fun emitSupervisorPushEvent(payload: Map<String, String>) {
+        supervisorPushEvents.emit(payload)
     }
 
     private suspend fun resolveRequest(

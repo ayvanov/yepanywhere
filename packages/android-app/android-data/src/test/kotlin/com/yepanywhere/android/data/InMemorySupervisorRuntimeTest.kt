@@ -1,7 +1,11 @@
 package com.yepanywhere.android.data
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -100,5 +104,26 @@ class InMemorySupervisorRuntimeTest {
         assertFalse(snapshot.pendingRequests.any { it.sessionId == "session-approval" })
         assertFalse(snapshot.inboxItems.first { it.sessionId == "session-approval" }.isUnread)
         assertFalse(snapshot.sessions.first { it.id == "session-approval" }.hasUnread)
+    }
+
+    @Test
+    fun relayClientStreamsForegroundSupervisorPushEvents() = runTest(UnconfinedTestDispatcher()) {
+        val runtime = InMemorySupervisorRuntime(
+            scope = backgroundScope,
+        )
+        val payload = mapOf(
+            "type" to "pending-input",
+            "sessionId" to "session-stream",
+            "requestId" to "request-stream",
+        )
+        val events = mutableListOf<Map<String, String>>()
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            runtime.relayConnectionClient.supervisorPushEventStream().take(1).toList(events)
+        }
+        runtime.emitSupervisorPushEvent(payload)
+        advanceUntilIdle()
+
+        assertEquals(listOf(payload), events)
     }
 }
