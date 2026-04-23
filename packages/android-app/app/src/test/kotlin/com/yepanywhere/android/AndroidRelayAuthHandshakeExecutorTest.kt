@@ -31,11 +31,11 @@ class AndroidRelayAuthHandshakeExecutorTest {
             SecureRelayAuthHandshakeResult(
                 session = RelaySession(
                     username = "demo@yepanywhere",
-                    relayUrl = "wss://relay.yepanywhere.local",
+                    relayUrl = "wss://relay.yepanywhere.local/ws",
                     sessionId = "relay-session-demo",
                 ),
                 persistedSession = StoredRelaySession(
-                    wsUrl = "wss://relay.yepanywhere.local",
+                    wsUrl = "wss://relay.yepanywhere.local/ws",
                     username = "demo@yepanywhere",
                     sessionId = "relay-session-demo",
                     sessionKey = "demo-session-key",
@@ -96,13 +96,49 @@ class AndroidRelayAuthHandshakeExecutorTest {
             storedSession = stored,
         )
 
-        assertEquals("wss://relay.yepanywhere.local", capturedRelayUrl)
+        assertEquals("wss://relay.yepanywhere.local/ws", capturedRelayUrl)
         assertEquals("relay-user", capturedRelayUsername)
         assertEquals("demo@yepanywhere", capturedIdentity)
         assertEquals("secret", capturedPassword)
         assertEquals(stored, capturedStoredSession)
         assertEquals("session-real", result.session.sessionId)
         assertTrue(result.resumed)
+    }
+
+    @Test
+    fun relayModeUsesIdentityAsRelayUsernameFallback() = runTest {
+        var capturedRelayUsername: String? = null
+
+        val executor = AndroidRelayAuthHandshakeExecutor(
+            settings = AndroidRelayAuthSettings(
+                mode = AndroidRelayAuthMode.RELAY,
+                relayUrl = "wss://relay.yepanywhere.local",
+                relayUsername = null,
+            ),
+            relayAuthRunner = AndroidRelayAuthRunner { relayUrl, relayUsername, identity, _, _ ->
+                capturedRelayUsername = relayUsername
+                SecureRelayAuthHandshakeResult(
+                    session = RelaySession(
+                        username = identity,
+                        relayUrl = relayUrl,
+                        sessionId = "session-real",
+                    ),
+                    persistedSession = null,
+                    clearedStoredSession = false,
+                    transportNonce = null,
+                    resumed = false,
+                )
+            },
+        )
+
+        executor.execute(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+            storedSession = null,
+        )
+
+        assertEquals("demo@yepanywhere", capturedRelayUsername)
     }
 
     @Test

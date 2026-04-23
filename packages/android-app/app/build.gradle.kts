@@ -6,6 +6,22 @@ plugins {
 }
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+val localProperties = Properties().apply {
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use(::load)
+    }
+}
+
+fun localProperty(name: String): String = localProperties.getProperty(name, "")
+
+fun escapeBuildConfigString(value: String): String {
+    return value
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+}
 
 android {
     namespace = "com.yepanywhere.android"
@@ -21,6 +37,21 @@ android {
         buildConfigField("String", "YEP_RELAY_AUTH_MODE", "\"relay\"")
         buildConfigField("String", "YEP_RELAY_URL", "\"wss://relay.yepanywhere.local\"")
         buildConfigField("String", "YEP_RELAY_USERNAME", "\"\"")
+        buildConfigField(
+            "String",
+            "TEST_RELAY_URL",
+            "\"${escapeBuildConfigString(localProperty("test.relay.url"))}\"",
+        )
+        buildConfigField(
+            "String",
+            "TEST_RELAY_IDENTITY",
+            "\"${escapeBuildConfigString(localProperty("test.relay.identity"))}\"",
+        )
+        buildConfigField(
+            "String",
+            "TEST_RELAY_PASSWORD",
+            "\"${escapeBuildConfigString(localProperty("test.relay.password"))}\"",
+        )
     }
 
     buildTypes {

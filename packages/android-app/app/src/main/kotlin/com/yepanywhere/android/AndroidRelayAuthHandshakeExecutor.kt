@@ -54,7 +54,7 @@ class AndroidRelayAuthHandshakeExecutor(
                 )
                 runner.run(
                     relayUrl = targetRelayUrl,
-                    relayUsername = settings.relayUsername,
+                    relayUsername = settings.relayUsername ?: username,
                     identity = username,
                     password = password,
                     storedSession = storedSession,

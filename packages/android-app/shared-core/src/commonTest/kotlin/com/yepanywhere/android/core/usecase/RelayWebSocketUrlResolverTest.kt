@@ -6,13 +6,13 @@ import kotlin.test.assertFailsWith
 
 class RelayWebSocketUrlResolverTest {
     @Test
-    fun keepsWebSocketSchemesAndTrimsTrailingSlash() {
+    fun keepsWebSocketSchemesAndAddsDefaultWsPath() {
         assertEquals(
-            "wss://relay.yepanywhere.local",
+            "wss://relay.yepanywhere.local/ws",
             resolveRelayWebSocketUrl("wss://relay.yepanywhere.local/"),
         )
         assertEquals(
-            "ws://127.0.0.1:3400",
+            "ws://127.0.0.1:3400/ws",
             resolveRelayWebSocketUrl("ws://127.0.0.1:3400/"),
         )
     }
@@ -20,11 +20,11 @@ class RelayWebSocketUrlResolverTest {
     @Test
     fun mapsHttpSchemesToWebSocketSchemes() {
         assertEquals(
-            "ws://127.0.0.1:3400",
+            "ws://127.0.0.1:3400/ws",
             resolveRelayWebSocketUrl("http://127.0.0.1:3400"),
         )
         assertEquals(
-            "wss://relay.yepanywhere.local",
+            "wss://relay.yepanywhere.local/ws",
             resolveRelayWebSocketUrl("https://relay.yepanywhere.local"),
         )
     }
@@ -32,8 +32,16 @@ class RelayWebSocketUrlResolverTest {
     @Test
     fun defaultsToSecureWebSocketWhenSchemeMissing() {
         assertEquals(
-            "wss://relay.yepanywhere.local",
+            "wss://relay.yepanywhere.local/ws",
             resolveRelayWebSocketUrl("relay.yepanywhere.local"),
+        )
+    }
+
+    @Test
+    fun keepsExplicitPathWhenProvided() {
+        assertEquals(
+            "wss://relay.yepanywhere.local/custom",
+            resolveRelayWebSocketUrl("wss://relay.yepanywhere.local/custom"),
         )
     }
 
