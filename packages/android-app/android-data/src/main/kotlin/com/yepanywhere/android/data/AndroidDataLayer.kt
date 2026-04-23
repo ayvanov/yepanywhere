@@ -3,11 +3,13 @@ package com.yepanywhere.android.data
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.model.SupervisorPushPayload
+import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.repository.ApprovalsRepository
 import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
 import com.yepanywhere.android.core.repository.RelayConnectionClient
 import com.yepanywhere.android.core.repository.SessionsRepository
+import com.yepanywhere.android.core.usecase.SecureRelayAuthHandshakeResult
 import kotlinx.coroutines.flow.StateFlow
 
 interface SupervisorShellDataSource {
@@ -26,8 +28,20 @@ interface SupervisorFeatureDependencies {
 }
 
 class AndroidDataLayer(
-    private val runtime: InMemorySupervisorRuntime = InMemorySupervisorRuntime(),
+    runtimeOverride: InMemorySupervisorRuntime? = null,
+    relayAuthHandshake: (suspend (
+        username: String,
+        password: String,
+        relayUrl: String,
+        storedSession: StoredRelaySession?,
+    ) -> SecureRelayAuthHandshakeResult)? = null,
 ) : SupervisorShellDataSource, SupervisorFeatureDependencies {
+    private val runtime: InMemorySupervisorRuntime = runtimeOverride ?: if (relayAuthHandshake != null) {
+        InMemorySupervisorRuntime(relayAuthHandshake = relayAuthHandshake)
+    } else {
+        InMemorySupervisorRuntime()
+    }
+
     override val summary: String = SUMMARY
 
     override val shellState = runtime.shellState
