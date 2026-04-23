@@ -32,6 +32,7 @@ import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +45,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonArray
@@ -59,6 +61,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import java.util.concurrent.TimeUnit
 
 class RelaySupervisorRuntime(
     initialSnapshot: SupervisorShellSnapshot = defaultSupervisorShellSnapshot(),
@@ -89,9 +92,7 @@ class RelaySupervisorRuntime(
     private val supervisorPushEvents = SupervisorPushEventStreamAdapter(supervisorPushPayloads).events()
     private val realtime: RelayRealtimeGateway = realtimeGatewayOverride ?: RelayRealtimeClient(
         scope = scope,
-        httpClient = HttpClient(OkHttp) {
-            install(WebSockets)
-        },
+        httpClient = createRealtimeHttpClient(),
         relayRoutingUsername = relayRoutingUsername,
     )
     private val subscriptionMutex = Mutex()
@@ -139,12 +140,11 @@ class RelaySupervisorRuntime(
             storedSession.value = handshake.session
             val secureSession = storedSecureSession.value
             if (secureSession != null) {
-                realtime.connect(
+                connectRealtimeSession(
                     relayUrl = handshake.session.relayUrl,
                     storedSession = secureSession,
                 )
-                ensureActivitySubscription()
-                refreshAllFromBackend()
+                launchInitialRefresh()
             } else {
                 connectionState.value = RelayConnectionStatus.CONNECTED
             }
@@ -175,12 +175,11 @@ class RelaySupervisorRuntime(
             val secureSession = storedSecureSession.value
                 ?: throw IllegalStateException("missing_stored_relay_session")
             storedSession.value = session
-            realtime.connect(
+            connectRealtimeSession(
                 relayUrl = session.relayUrl,
                 storedSession = secureSession,
             )
-            ensureActivitySubscription()
-            refreshAllFromBackend()
+            launchInitialRefresh()
         }
 
         override suspend fun disconnect() {
@@ -443,6 +442,34 @@ class RelaySupervisorRuntime(
             ensureActivitySubscription()
             refreshInboxInternal()
             refreshSessionTimeline(activeSessionBackendId)
+        }
+    }
+
+    private fun launchInitialRefresh() {
+        scope.launch {
+            runCatching {
+                refreshAllFromBackend()
+            }
+        }
+    }
+
+    private suspend fun connectRealtimeSession(
+        relayUrl: String,
+        storedSession: StoredRelaySession,
+    ) {
+        try {
+            withTimeout(RELAY_REALTIME_CONNECT_TIMEOUT_MS) {
+                realtime.connect(
+                    relayUrl = relayUrl,
+                    storedSession = storedSession,
+                )
+                ensureActivitySubscription()
+            }
+        } catch (_: TimeoutCancellationException) {
+            clearSubscriptions()
+            realtime.disconnect()
+            connectionState.value = RelayConnectionStatus.DISCONNECTED
+            throw IllegalStateException(RELAY_REALTIME_CONNECT_TIMEOUT_ERROR_MESSAGE)
         }
     }
 
@@ -747,6 +774,21 @@ class RelaySupervisorRuntime(
             path = path,
             body = body,
         )
+    }
+}
+
+private fun createRealtimeHttpClient(): HttpClient {
+    return HttpClient(OkHttp) {
+        install(WebSockets)
+        engine {
+            config {
+                callTimeout(RELAY_REALTIME_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                connectTimeout(RELAY_REALTIME_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                readTimeout(RELAY_REALTIME_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                writeTimeout(RELAY_REALTIME_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                pingInterval(15, TimeUnit.SECONDS)
+            }
+        }
     }
 }
 

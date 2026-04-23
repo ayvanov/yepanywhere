@@ -3,12 +3,19 @@ package com.yepanywhere.android
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.usecase.SecureRelayAuthHandshakeResult
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AndroidRelayAuthHandshakeExecutorTest {
     @Test
     fun demoModeReturnsDeterministicHandshakeResult() = runTest {
@@ -162,5 +169,43 @@ class AndroidRelayAuthHandshakeExecutorTest {
         }
 
         assertEquals("relay_auth_runner_missing", error.message)
+    }
+
+    @Test
+    fun relayModeTimesOutAfterSixtySeconds() = runTest {
+        val executor = AndroidRelayAuthHandshakeExecutor(
+            settings = AndroidRelayAuthSettings(
+                mode = AndroidRelayAuthMode.RELAY,
+                relayUrl = "wss://relay.yepanywhere.local",
+                relayUsername = "relay-user",
+            ),
+            relayAuthRunner = AndroidRelayAuthRunner { _, _, _, _, _ ->
+                awaitCancellation()
+            },
+        )
+
+        val execution = async {
+            runCatching {
+                executor.execute(
+                    username = "demo@yepanywhere",
+                    password = "secret",
+                    relayUrl = "relay.yepanywhere.com",
+                    storedSession = null,
+                )
+            }
+        }
+
+        advanceTimeBy(RELAY_LOGIN_TIMEOUT_MS - 1)
+        runCurrent()
+        assertFalse(execution.isCompleted)
+
+        advanceTimeBy(1)
+        runCurrent()
+
+        assertTrue(execution.isCompleted)
+        assertEquals(
+            RELAY_LOGIN_TIMEOUT_ERROR_MESSAGE,
+            execution.await().exceptionOrNull()?.message,
+        )
     }
 }

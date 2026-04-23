@@ -15,6 +15,7 @@ import io.ktor.websocket.readText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
@@ -48,6 +49,8 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 private const val SECRETBOX_KEY_LENGTH = 32
 private const val SECRETBOX_NONCE_LENGTH = 24
 private const val REQUEST_TIMEOUT_MS = 30_000L
+internal const val RELAY_REALTIME_CONNECT_TIMEOUT_MS = 60_000L
+internal const val RELAY_REALTIME_CONNECT_TIMEOUT_ERROR_MESSAGE = "Login timed out after 60 seconds"
 private const val TRANSPORT_KEY_LABEL = "yep-transport-v1"
 
 internal class RelayApiException(
@@ -176,22 +179,28 @@ internal class RelayRealtimeClient(
     ) {
         disconnect()
         connectionStateMutable.value = RelayConnectionStatus.CONNECTING
-
-        val firstAttempt = runCatching {
-            connectInternal(
-                relayUrl = relayUrl,
-                storedSession = storedSession,
-                routingUsername = relayRoutingUsername,
-            )
-        }
-        if (firstAttempt.isFailure && relayRoutingUsername == null) {
-            connectInternal(
-                relayUrl = relayUrl,
-                storedSession = storedSession,
-                routingUsername = storedSession.username,
-            )
-        } else {
-            firstAttempt.getOrThrow()
+        try {
+            withTimeout(RELAY_REALTIME_CONNECT_TIMEOUT_MS) {
+                val firstAttempt = runCatching {
+                    connectInternal(
+                        relayUrl = relayUrl,
+                        storedSession = storedSession,
+                        routingUsername = relayRoutingUsername,
+                    )
+                }
+                if (firstAttempt.isFailure && relayRoutingUsername == null) {
+                    connectInternal(
+                        relayUrl = relayUrl,
+                        storedSession = storedSession,
+                        routingUsername = storedSession.username,
+                    )
+                } else {
+                    firstAttempt.getOrThrow()
+                }
+            }
+        } catch (_: TimeoutCancellationException) {
+            disconnect()
+            throw IllegalStateException(RELAY_REALTIME_CONNECT_TIMEOUT_ERROR_MESSAGE)
         }
     }
 

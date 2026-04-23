@@ -4,6 +4,11 @@ import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.usecase.SecureRelayAuthHandshakeResult
 import com.yepanywhere.android.core.usecase.resolveRelayWebSocketUrl
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+
+internal const val RELAY_LOGIN_TIMEOUT_MS = 60_000L
+internal const val RELAY_LOGIN_TIMEOUT_ERROR_MESSAGE = "Login timed out after 60 seconds"
 
 fun interface AndroidRelayAuthRunner {
     suspend fun run(
@@ -52,13 +57,19 @@ class AndroidRelayAuthHandshakeExecutor(
                 val targetRelayUrl = resolveRelayWebSocketUrl(
                     if (relayUrl.isBlank()) settings.relayUrl else relayUrl,
                 )
-                runner.run(
-                    relayUrl = targetRelayUrl,
-                    relayUsername = settings.relayUsername ?: username,
-                    identity = username,
-                    password = password,
-                    storedSession = storedSession,
-                )
+                try {
+                    withTimeout(RELAY_LOGIN_TIMEOUT_MS) {
+                        runner.run(
+                            relayUrl = targetRelayUrl,
+                            relayUsername = settings.relayUsername ?: username,
+                            identity = username,
+                            password = password,
+                            storedSession = storedSession,
+                        )
+                    }
+                } catch (_: TimeoutCancellationException) {
+                    throw IllegalStateException(RELAY_LOGIN_TIMEOUT_ERROR_MESSAGE)
+                }
             }
         }
     }

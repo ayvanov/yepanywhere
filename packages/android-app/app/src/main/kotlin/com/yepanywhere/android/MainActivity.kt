@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -180,6 +181,8 @@ internal fun RelayLoginScreen(
     onPasswordChanged: (String) -> Unit,
     onSubmit: () -> Unit,
 ) {
+    val inputsEnabled = !state.isSubmitting && !state.isInitializing
+
     AndroidAppTheme {
         Column(
             modifier = Modifier
@@ -209,24 +212,33 @@ internal fun RelayLoginScreen(
                     OutlinedTextField(
                         value = state.relayUrl,
                         onValueChange = onRelayUrlChanged,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("relay-url-input"),
                         label = { Text("Relay URL") },
                         singleLine = true,
+                        enabled = inputsEnabled,
                     )
                     OutlinedTextField(
                         value = state.username,
                         onValueChange = onUsernameChanged,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("identity-input"),
                         label = { Text("Identity") },
                         singleLine = true,
+                        enabled = inputsEnabled,
                     )
                     OutlinedTextField(
                         value = state.password,
                         onValueChange = onPasswordChanged,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("password-input"),
                         label = { Text("Password") },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
+                        enabled = inputsEnabled,
                     )
 
                     if (state.isInitializing) {
