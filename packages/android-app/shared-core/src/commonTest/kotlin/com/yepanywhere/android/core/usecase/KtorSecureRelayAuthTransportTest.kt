@@ -80,6 +80,65 @@ class KtorSecureRelayAuthTransportTest {
         assertEquals(true, socket.closed)
     }
 
+    @Test
+    fun sendPerformsRelayClientConnectBeforeAuthMessages() = runTest {
+        val socket = FakeSecureRelayAuthSocket(
+            incomingTexts = ArrayDeque(
+                listOf(
+                    """{"type":"client_connected"}""",
+                ),
+            ),
+        )
+        val transport = KtorSecureRelayAuthTransport(
+            relayUsername = "relay-user",
+            sessionFactory = { socket },
+        )
+
+        transport.send(
+            SrpMessage.ClientHello(
+                identity = "demo@yepanywhere",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                """{"type":"client_connect","username":"relay-user"}""",
+                """{"type":"srp_hello","identity":"demo@yepanywhere","browserProfileId":null,"originMetadata":null}""",
+            ),
+            socket.sentTexts,
+        )
+    }
+
+    @Test
+    fun sendFailsWhenRelayReturnsClientError() = runTest {
+        val socket = FakeSecureRelayAuthSocket(
+            incomingTexts = ArrayDeque(
+                listOf(
+                    """{"type":"client_error","reason":"server_offline"}""",
+                ),
+            ),
+        )
+        val transport = KtorSecureRelayAuthTransport(
+            relayUsername = "relay-user",
+            sessionFactory = { socket },
+        )
+
+        val error = assertFailsWith<IllegalStateException> {
+            transport.send(
+                SrpMessage.ClientHello(
+                    identity = "demo@yepanywhere",
+                ),
+            )
+        }
+        assertEquals("relay_client_error: server_offline", error.message)
+        assertEquals(
+            listOf(
+                """{"type":"client_connect","username":"relay-user"}""",
+            ),
+            socket.sentTexts,
+        )
+    }
+
     private class FakeSecureRelayAuthSocket(
         private val incomingTexts: ArrayDeque<String> = ArrayDeque(),
     ) : SecureRelayAuthSocket {

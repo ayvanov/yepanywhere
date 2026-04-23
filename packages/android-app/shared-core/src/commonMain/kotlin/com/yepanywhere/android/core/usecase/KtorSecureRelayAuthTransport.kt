@@ -1,5 +1,7 @@
 package com.yepanywhere.android.core.usecase
 
+import com.yepanywhere.android.core.model.RelayClientErrorReason
+import com.yepanywhere.android.core.model.RelayRoutingMessage
 import com.yepanywhere.android.core.model.SrpMessage
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -19,12 +21,15 @@ internal interface SecureRelayAuthSocket {
 }
 
 class KtorSecureRelayAuthTransport internal constructor(
+    private val relayUsername: String? = null,
     private val sessionFactory: suspend () -> SecureRelayAuthSocket,
 ) : SecureRelayAuthTransport {
     constructor(
         client: HttpClient,
         websocketUrl: String,
+        relayUsername: String? = null,
     ) : this(
+        relayUsername = relayUsername,
         sessionFactory = {
             KtorClientSecureRelayAuthSocket(
                 session = client.webSocketSession {
@@ -35,12 +40,15 @@ class KtorSecureRelayAuthTransport internal constructor(
     )
 
     private var activeSession: SecureRelayAuthSocket? = null
+    private var relayClientConnected: Boolean = relayUsername == null
 
     override suspend fun send(message: SrpMessage) {
+        ensureRelayClientConnected()
         session().sendText(message.encode())
     }
 
     override suspend fun receive(): SrpMessage {
+        ensureRelayClientConnected()
         val payload = session().receiveText()
         return SrpMessage.decode(payload) ?: throw IllegalStateException("invalid_auth_message")
     }
@@ -58,6 +66,38 @@ class KtorSecureRelayAuthTransport internal constructor(
 
         return sessionFactory().also { created ->
             activeSession = created
+        }
+    }
+
+    private suspend fun ensureRelayClientConnected() {
+        if (relayClientConnected) {
+            return
+        }
+
+        val username = relayUsername ?: return
+        val socket = session()
+        socket.sendText(
+            RelayRoutingMessage.ClientConnect(username = username).encode(),
+        )
+
+        while (true) {
+            val payload = socket.receiveText()
+            when (val message = RelayRoutingMessage.decode(payload)) {
+                is RelayRoutingMessage.ClientConnected -> {
+                    relayClientConnected = true
+                    return
+                }
+
+                is RelayRoutingMessage.ClientError -> {
+                    throw IllegalStateException(
+                        "relay_client_error: ${message.reason.wireValue()}",
+                    )
+                }
+
+                else -> {
+                    throw IllegalStateException("unexpected_relay_routing_message")
+                }
+            }
         }
     }
 }
@@ -82,5 +122,12 @@ private class KtorClientSecureRelayAuthSocket(
 
     override suspend fun close() {
         session.close()
+    }
+}
+
+private fun RelayClientErrorReason.wireValue(): String {
+    return when (this) {
+        RelayClientErrorReason.SERVER_OFFLINE -> "server_offline"
+        RelayClientErrorReason.UNKNOWN_USERNAME -> "unknown_username"
     }
 }
