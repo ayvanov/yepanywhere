@@ -33,3 +33,38 @@ describe("api.updateServerSettings", () => {
     expect(request?.body).toBe(JSON.stringify({ globalInstructions: null }));
   });
 });
+
+describe("api.login", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("fails with a timeout error after 60 seconds", async () => {
+    fetchMock.mockImplementation((_input, init) => {
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal | undefined;
+        signal?.addEventListener("abort", () => {
+          reject(new Error("Aborted"));
+        });
+      });
+    });
+
+    const loginPromise = api.login("secret");
+    const assertion = expect(loginPromise).rejects.toThrow(
+      "Login timed out after 60 seconds",
+    );
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

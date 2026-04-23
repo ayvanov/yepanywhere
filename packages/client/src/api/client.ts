@@ -127,6 +127,8 @@ export interface SessionOptions {
 export type { UploadedFile } from "@yep-anywhere/shared";
 
 const API_BASE = "/api";
+const LOGIN_TIMEOUT_MS = 60_000;
+const LOGIN_TIMEOUT_ERROR_MESSAGE = "Login timed out after 60 seconds";
 
 /**
  * Desktop auth token read from URL query parameter (?desktop_token=...).
@@ -171,9 +173,14 @@ export interface AuthStatus {
   localhostOpen: boolean;
 }
 
+export interface FetchJSONOptions extends RequestInit {
+  timeoutMs?: number;
+  timeoutErrorMessage?: string;
+}
+
 export async function fetchJSON<T>(
   path: string,
-  options?: RequestInit,
+  options?: FetchJSONOptions,
 ): Promise<T> {
   // Route through global connection in remote mode (SecureConnection)
   const globalConn = getGlobalConnection();
@@ -197,14 +204,63 @@ export async function fetchJSON<T>(
     headers["X-Desktop-Token"] = desktopAuthToken;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    credentials: "include",
-    headers: {
-      ...headers,
-      ...options?.headers,
-    },
-  });
+  const {
+    timeoutMs,
+    timeoutErrorMessage,
+    signal: requestSignal,
+    ...requestOptions
+  } = options ?? {};
+
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let timeoutTriggered = false;
+  let finalSignal = requestSignal;
+
+  if (typeof timeoutMs === "number" && timeoutMs > 0) {
+    const timeoutController = new AbortController();
+    finalSignal = timeoutController.signal;
+
+    if (requestSignal) {
+      if (requestSignal.aborted) {
+        timeoutController.abort(requestSignal.reason);
+      } else {
+        requestSignal.addEventListener(
+          "abort",
+          () => timeoutController.abort(requestSignal.reason),
+          { once: true },
+        );
+      }
+    }
+
+    timeoutId = setTimeout(() => {
+      timeoutTriggered = true;
+      timeoutController.abort();
+    }, timeoutMs);
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...requestOptions,
+      credentials: "include",
+      headers: {
+        ...headers,
+        ...requestOptions.headers,
+      },
+      signal: finalSignal,
+    });
+  } catch (error) {
+    if (timeoutTriggered) {
+      throw new Error(
+        timeoutErrorMessage ??
+          `Request timed out after ${Math.round(timeoutMs ?? 0)}ms`,
+      );
+    }
+    throw error;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 
   if (!res.ok) {
     // Signal login required for 401 errors (but not for auth endpoints themselves)
@@ -861,6 +917,8 @@ export const api = {
     fetchJSON<{ success: boolean }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ password }),
+      timeoutMs: LOGIN_TIMEOUT_MS,
+      timeoutErrorMessage: LOGIN_TIMEOUT_ERROR_MESSAGE,
     }),
 
   logout: () =>

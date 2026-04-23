@@ -147,6 +147,41 @@ const RemoteConnectionContext = createContext<RemoteConnectionState | null>(
 );
 
 const STORAGE_KEY = "yep-anywhere-remote-credentials";
+const LOGIN_TIMEOUT_MS = 60_000;
+const LOGIN_TIMEOUT_ERROR_MESSAGE = "Login timed out after 60 seconds";
+
+function getRemainingLoginTimeoutMs(startedAt: number): number {
+  const remaining = LOGIN_TIMEOUT_MS - (Date.now() - startedAt);
+  if (remaining <= 0) {
+    throw new Error(LOGIN_TIMEOUT_ERROR_MESSAGE);
+  }
+  return remaining;
+}
+
+function withLoginTimeout<T>(
+  startedAt: number,
+  operation: () => Promise<T>,
+  onTimeout?: () => void,
+): Promise<T> {
+  const timeoutMs = getRemainingLoginTimeoutMs(startedAt);
+
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      onTimeout?.();
+      reject(new Error(LOGIN_TIMEOUT_ERROR_MESSAGE));
+    }, timeoutMs);
+
+    operation()
+      .then((value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
+}
 
 function loadStoredCredentials(): StoredCredentials | null {
   try {
@@ -402,6 +437,7 @@ export function RemoteConnectionProvider({ children }: Props) {
 
   const connectViaRelay = useCallback(
     async (options: ConnectViaRelayOptions) => {
+      const loginStartedAt = Date.now();
       const {
         relayUrl,
         relayUsername,
@@ -425,10 +461,14 @@ export function RemoteConnectionProvider({ children }: Props) {
 
         // Wait for WebSocket to open
         await new Promise<void>((resolve, reject) => {
+          const timeoutMs = Math.min(
+            15000,
+            getRemainingLoginTimeoutMs(loginStartedAt),
+          );
           const timeout = setTimeout(() => {
             ws.close();
             reject(new Error("Relay connection timeout"));
-          }, 15000);
+          }, timeoutMs);
 
           ws.onopen = () => {
             clearTimeout(timeout);
@@ -449,10 +489,14 @@ export function RemoteConnectionProvider({ children }: Props) {
 
         // 3. Wait for client_connected or error
         await new Promise<void>((resolve, reject) => {
+          const timeoutMs = Math.min(
+            30000,
+            getRemainingLoginTimeoutMs(loginStartedAt),
+          );
           const timeout = setTimeout(() => {
             ws.close();
             reject(new Error("Waiting for server timed out"));
-          }, 30000);
+          }, timeoutMs);
 
           ws.onmessage = (event) => {
             clearTimeout(timeout);
@@ -505,26 +549,40 @@ export function RemoteConnectionProvider({ children }: Props) {
         // If session is provided, use resume-only mode; otherwise do fresh SRP auth
         let conn: SecureConnection;
         if (session) {
-          conn = await SecureConnection.forResumeOnlyWithSocket(
-            ws,
-            session,
-            rememberMe ? handleSessionEstablished : undefined,
-            { relayUrl, relayUsername },
-            handleDisconnect,
+          conn = await withLoginTimeout(
+            loginStartedAt,
+            () =>
+              SecureConnection.forResumeOnlyWithSocket(
+                ws,
+                session,
+                rememberMe ? handleSessionEstablished : undefined,
+                { relayUrl, relayUsername },
+                handleDisconnect,
+              ),
+            () => ws.close(),
           );
         } else {
-          conn = await SecureConnection.connectWithExistingSocket(
-            ws,
-            srpUsername,
-            srpPassword,
-            rememberMe ? handleSessionEstablished : undefined,
-            { relayUrl, relayUsername },
-            handleDisconnect,
+          conn = await withLoginTimeout(
+            loginStartedAt,
+            () =>
+              SecureConnection.connectWithExistingSocket(
+                ws,
+                srpUsername,
+                srpPassword,
+                rememberMe ? handleSessionEstablished : undefined,
+                { relayUrl, relayUsername },
+                handleDisconnect,
+              ),
+            () => ws.close(),
           );
         }
 
         // Test the connection
-        await conn.fetch("/auth/status");
+        await withLoginTimeout(
+          loginStartedAt,
+          () => conn.fetch("/auth/status"),
+          () => conn.close(),
+        );
 
         // Set global connection
         setGlobalConnection(conn);
