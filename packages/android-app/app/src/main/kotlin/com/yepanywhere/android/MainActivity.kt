@@ -144,6 +144,7 @@ private fun YepAnywhereAndroidApp(
             activeSessionState = activeSessionState,
             activeSessionCallbacks = activeSessionCallbacks,
             onSectionSelected = shellViewModel::selectSection,
+            onLogout = relayLoginViewModel::logout,
         )
     } else {
         RelayLoginScreen(
@@ -166,7 +167,7 @@ internal fun createActiveSessionCallbacks(handler: ActiveSessionCommandHandler):
 }
 
 @Composable
-private fun RelayLoginScreen(
+internal fun RelayLoginScreen(
     state: RelayLoginUiState,
     onRelayUrlChanged: (String) -> Unit,
     onUsernameChanged: (String) -> Unit,
@@ -199,52 +200,52 @@ private fun RelayLoginScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
+                    OutlinedTextField(
+                        value = state.relayUrl,
+                        onValueChange = onRelayUrlChanged,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Relay URL") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.username,
+                        onValueChange = onUsernameChanged,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Identity") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.password,
+                        onValueChange = onPasswordChanged,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Password") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                    )
+
                     if (state.isInitializing) {
                         CircularProgressIndicator()
                         Text(
-                            text = "Checking persisted session...",
+                            text = "Trying saved relay session...",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    } else {
-                        OutlinedTextField(
-                            value = state.relayUrl,
-                            onValueChange = onRelayUrlChanged,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Relay URL") },
-                            singleLine = true,
-                        )
-                        OutlinedTextField(
-                            value = state.username,
-                            onValueChange = onUsernameChanged,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Identity") },
-                            singleLine = true,
-                        )
-                        OutlinedTextField(
-                            value = state.password,
-                            onValueChange = onPasswordChanged,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Password") },
-                            visualTransformation = PasswordVisualTransformation(),
-                            singleLine = true,
-                        )
+                    }
 
-                        state.errorMessage?.let { errorMessage ->
-                            Text(
-                                text = errorMessage,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
+                    state.errorMessage?.let { errorMessage ->
+                        Text(
+                            text = errorMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
 
-                        Button(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onSubmit,
-                            enabled = !state.isSubmitting,
-                        ) {
-                            Text(if (state.isSubmitting) "Signing in..." else "Sign in")
-                        }
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onSubmit,
+                        enabled = !state.isSubmitting && !state.isInitializing,
+                    ) {
+                        Text(if (state.isSubmitting) "Signing in..." else "Sign in")
                     }
                 }
             }

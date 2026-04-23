@@ -283,6 +283,22 @@ class SupervisorShellScreenTest {
     }
 
     @Test
+    fun shellHeaderLogoutDispatchesCallback() {
+        var logoutCalled = false
+
+        renderShell(
+            onLogout = { logoutCalled = true },
+        )
+
+        composeRule.onNodeWithTag("shell-logout")
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(true, logoutCalled)
+        }
+    }
+
+    @Test
     fun projectsSectionRendersWorkspaceSummary() {
         renderShell(
             shellState = shellState(selectedSection = SupervisorShellSection.PROJECTS),
@@ -359,6 +375,7 @@ class SupervisorShellScreenTest {
             onAnswerQuestion = { _, _ -> },
         ),
         onSectionSelected: (SupervisorShellSection) -> Unit = {},
+        onLogout: () -> Unit = {},
     ) {
         composeRule.setContent {
             SupervisorShellScreen(
@@ -369,6 +386,7 @@ class SupervisorShellScreenTest {
                 activeSessionState = activeSessionState,
                 activeSessionCallbacks = callbacks,
                 onSectionSelected = onSectionSelected,
+                onLogout = onLogout,
             )
         }
     }

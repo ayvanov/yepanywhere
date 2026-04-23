@@ -20,6 +20,8 @@ interface SupervisorShellDataSource {
 
     suspend fun login(credentials: RelayCredentials)
 
+    suspend fun logout()
+
     suspend fun restorePersistedCredentials(): RelayCredentials?
 }
 
@@ -59,12 +61,17 @@ class AndroidDataLayer(
 
     override suspend fun reconnectPersistedSession(): Boolean {
         val persistedState = relayAuthStateStore.read() ?: return false
-        persistedState.storedSession?.let { runtime.relayAuthRepository.persistStoredSession(it) }
+        val storedSession = persistedState.storedSession
+        val password = persistedState.credentials.password.takeIf { it.isNotBlank() }
+        if (storedSession == null && password == null) {
+            return false
+        }
+        storedSession?.let { runtime.relayAuthRepository.persistStoredSession(it) }
 
         return try {
             runtime.relayAuthRepository.login(
                 username = persistedState.credentials.username,
-                password = persistedState.credentials.password,
+                password = password,
                 relayUrl = persistedState.credentials.relayUrl,
             )
             persistRelayAuthState(persistedState.credentials)
@@ -86,6 +93,22 @@ class AndroidDataLayer(
             relayUrl = normalizedCredentials.relayUrl,
         )
         persistRelayAuthState(normalizedCredentials)
+    }
+
+    override suspend fun logout() {
+        val rememberedCredentials = relayAuthStateStore.read()?.credentials
+        runtime.relayAuthRepository.clearSession()
+        if (rememberedCredentials == null) {
+            relayAuthStateStore.clear()
+            return
+        }
+
+        relayAuthStateStore.write(
+            PersistedRelayAuthState(
+                credentials = rememberedCredentials.copy(password = ""),
+                storedSession = null,
+            ),
+        )
     }
 
     override suspend fun restorePersistedCredentials(): RelayCredentials? {

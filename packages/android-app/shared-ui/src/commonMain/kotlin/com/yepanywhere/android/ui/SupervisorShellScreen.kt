@@ -98,6 +98,7 @@ fun SupervisorShellScreen(
     activeSessionState: ActiveSessionScreenState,
     activeSessionCallbacks: ActiveSessionCallbacks,
     onSectionSelected: (SupervisorShellSection) -> Unit,
+    onLogout: () -> Unit,
 ) {
     AndroidAppTheme {
         Scaffold(
@@ -137,6 +138,7 @@ fun SupervisorShellScreen(
                 ShellHeader(
                     title = state.title,
                     subtitle = state.subtitle,
+                    onLogout = onLogout,
                 )
 
                 SummaryStrip(snapshot = state.snapshot)
@@ -164,13 +166,26 @@ fun AndroidAppTheme(content: @Composable () -> Unit) {
 private fun ShellHeader(
     title: String,
     subtitle: String,
+    onLogout: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Button(
+                onClick = onLogout,
+                modifier = Modifier.testTag("shell-logout"),
+            ) {
+                Text("Log out")
+            }
+        }
         Text(
             text = subtitle,
             style = MaterialTheme.typography.bodyMedium,

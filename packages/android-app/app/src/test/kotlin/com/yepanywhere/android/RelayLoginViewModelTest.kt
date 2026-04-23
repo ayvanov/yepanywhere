@@ -40,6 +40,35 @@ class RelayLoginViewModelTest {
         assertFalse(viewModel.uiState.value.isInitializing)
         assertEquals("wss://relay.yepanywhere.local", viewModel.uiState.value.relayUrl)
         assertEquals("demo@yepanywhere", viewModel.uiState.value.username)
+        assertEquals(1, source.reconnectCalls)
+
+        externalScope.cancel()
+    }
+
+    @Test
+    fun initializeAttemptsReconnectWithSavedIdentityAndEmptyPassword() = runTest {
+        val source = FakeSupervisorShellDataSource().apply {
+            persistedCredentials = RelayCredentials(
+                relayUrl = "wss://relay.yepanywhere.local",
+                username = "demo@yepanywhere",
+                password = "",
+            )
+            reconnectResult = false
+        }
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = RelayLoginViewModel(
+            dataSource = source,
+            scope = externalScope,
+        )
+
+        viewModel.initialize()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isAuthenticated)
+        assertFalse(viewModel.uiState.value.isInitializing)
+        assertEquals("wss://relay.yepanywhere.local", viewModel.uiState.value.relayUrl)
+        assertEquals("demo@yepanywhere", viewModel.uiState.value.username)
+        assertEquals(1, source.reconnectCalls)
 
         externalScope.cancel()
     }
@@ -94,18 +123,51 @@ class RelayLoginViewModelTest {
         externalScope.cancel()
     }
 
+    @Test
+    fun logoutClearsAuthenticationAndDelegatesToDataSource() = runTest {
+        val source = FakeSupervisorShellDataSource().apply {
+            reconnectResult = true
+        }
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = RelayLoginViewModel(
+            dataSource = source,
+            scope = externalScope,
+        )
+
+        viewModel.initialize()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.isAuthenticated)
+
+        viewModel.logout()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isAuthenticated)
+        assertEquals(1, source.logoutCalls)
+
+        externalScope.cancel()
+    }
+
     private class FakeSupervisorShellDataSource : SupervisorShellDataSource {
         override val summary: String = "Android-owned cache and secure relay session persistence."
         override val shellState = MutableStateFlow(defaultSupervisorShellSnapshot())
 
         var reconnectResult: Boolean = false
+        var reconnectCalls: Int = 0
         var persistedCredentials: RelayCredentials? = null
         val loginCalls = mutableListOf<RelayCredentials>()
+        var logoutCalls: Int = 0
 
-        override suspend fun reconnectPersistedSession(): Boolean = reconnectResult
+        override suspend fun reconnectPersistedSession(): Boolean {
+            reconnectCalls += 1
+            return reconnectResult
+        }
 
         override suspend fun login(credentials: RelayCredentials) {
             loginCalls += credentials
+        }
+
+        override suspend fun logout() {
+            logoutCalls += 1
         }
 
         override suspend fun restorePersistedCredentials(): RelayCredentials? = persistedCredentials

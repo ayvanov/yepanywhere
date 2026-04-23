@@ -89,6 +89,8 @@ class SupervisorShellViewModelTest {
 
         override suspend fun login(credentials: com.yepanywhere.android.data.RelayCredentials) = Unit
 
+        override suspend fun logout() = Unit
+
         override suspend fun restorePersistedCredentials(): com.yepanywhere.android.data.RelayCredentials? = null
     }
 }

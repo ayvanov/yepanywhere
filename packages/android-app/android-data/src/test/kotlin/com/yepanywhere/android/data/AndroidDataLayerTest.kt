@@ -119,6 +119,54 @@ class AndroidDataLayerTest {
     }
 
     @Test
+    fun logoutKeepsRelayUrlAndIdentityForFutureLogin() = runTest(UnconfinedTestDispatcher()) {
+        var handshakeCalls = 0
+        val credentials = RelayCredentials(
+            relayUrl = "wss://relay.yepanywhere.local",
+            username = "demo@yepanywhere",
+            password = "demo-password",
+        )
+        val dataLayer = AndroidDataLayer(
+            relayAuthStateStore = InMemoryRelayAuthStateStore(),
+            relayAuthHandshake = { username, _, relayUrl, _ ->
+                handshakeCalls += 1
+                SecureRelayAuthHandshakeResult(
+                    session = RelaySession(
+                        username = username,
+                        relayUrl = relayUrl,
+                        sessionId = "session-demo",
+                    ),
+                    persistedSession = StoredRelaySession(
+                        wsUrl = relayUrl,
+                        username = username,
+                        sessionId = "session-demo",
+                        sessionKey = "session-key",
+                    ),
+                    clearedStoredSession = false,
+                    transportNonce = null,
+                    resumed = false,
+                )
+            },
+        )
+
+        dataLayer.login(credentials)
+        dataLayer.logout()
+
+        assertEquals(
+            RelayCredentials(
+                relayUrl = credentials.relayUrl,
+                username = credentials.username,
+                password = "",
+            ),
+            dataLayer.restorePersistedCredentials(),
+        )
+
+        val reconnected = dataLayer.reconnectPersistedSession()
+        assertFalse(reconnected)
+        assertEquals(1, handshakeCalls)
+    }
+
+    @Test
     fun appliesAndClearsPendingInputNotifications() = runTest(UnconfinedTestDispatcher()) {
         val runtime = InMemorySupervisorRuntime(scope = backgroundScope)
         val dataLayer = AndroidDataLayer(runtime)

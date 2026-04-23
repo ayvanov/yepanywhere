@@ -43,6 +43,7 @@ class RelayLoginViewModel(
                 current.copy(
                     relayUrl = persistedCredentials?.relayUrl ?: current.relayUrl,
                     username = persistedCredentials?.username ?: current.username,
+                    isInitializing = true,
                 )
             }
 
@@ -114,6 +115,29 @@ class RelayLoginViewModel(
                         isSubmitting = false,
                         isAuthenticated = false,
                         errorMessage = error.message ?: "Relay login failed.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun logout() {
+        coroutineScope.launch {
+            runCatching {
+                dataSource.logout()
+            }.onSuccess {
+                mutableUiState.update {
+                    it.copy(
+                        password = "",
+                        isSubmitting = false,
+                        isAuthenticated = false,
+                        errorMessage = null,
+                    )
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        errorMessage = error.message ?: "Relay logout failed.",
                     )
                 }
             }

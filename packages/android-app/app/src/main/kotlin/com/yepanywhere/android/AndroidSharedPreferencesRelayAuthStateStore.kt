@@ -15,7 +15,7 @@ class AndroidSharedPreferencesRelayAuthStateStore(
         val relayUrl = preferences.getString(KEY_RELAY_URL, null)?.trim().orEmpty()
         val username = preferences.getString(KEY_USERNAME, null)?.trim().orEmpty()
         val password = preferences.getString(KEY_PASSWORD, null).orEmpty()
-        if (relayUrl.isBlank() || username.isBlank() || password.isBlank()) {
+        if (relayUrl.isBlank() || username.isBlank()) {
             return null
         }
 
@@ -33,21 +33,23 @@ class AndroidSharedPreferencesRelayAuthStateStore(
     }
 
     override suspend fun write(state: PersistedRelayAuthState) {
-        preferences.edit()
+        val persisted = preferences.edit()
             .putString(KEY_RELAY_URL, state.credentials.relayUrl)
             .putString(KEY_USERNAME, state.credentials.username)
             .putString(KEY_PASSWORD, state.credentials.password)
             .putString(KEY_STORED_SESSION, state.storedSession?.encode())
-            .apply()
+            .commit()
+        check(persisted) { "relay_auth_state_write_failed" }
     }
 
     override suspend fun clear() {
-        preferences.edit()
+        val persisted = preferences.edit()
             .remove(KEY_RELAY_URL)
             .remove(KEY_USERNAME)
             .remove(KEY_PASSWORD)
             .remove(KEY_STORED_SESSION)
-            .apply()
+            .commit()
+        check(persisted) { "relay_auth_state_clear_failed" }
     }
 
     companion object {

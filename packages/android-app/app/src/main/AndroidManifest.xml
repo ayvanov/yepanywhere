@@ -6,7 +6,7 @@
     <application
         android:name=".YepAnywhereAndroidApplication"
         android:label="Yep Anywhere Android"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        android:theme="@style/Theme.YepAnywhere">
         <activity
             android:name=".MainActivity"
             android:exported="true"
