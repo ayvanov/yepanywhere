@@ -67,6 +67,10 @@ class AndroidDataLayer(
         runtime.emitSupervisorPushEvent(event)
     }
 
+    suspend fun emitSupervisorPushPayload(payload: Map<String, String>): Boolean {
+        return runtime.emitSupervisorPushPayload(payload)
+    }
+
     companion object {
         const val SUMMARY: String =
             "Android-owned cache/storage layer for Room, DataStore, and secure relay session persistence."

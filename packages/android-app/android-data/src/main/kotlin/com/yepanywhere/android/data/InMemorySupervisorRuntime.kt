@@ -335,6 +335,12 @@ class InMemorySupervisorRuntime(
         supervisorPushEvents.emit(event)
     }
 
+    suspend fun emitSupervisorPushPayload(payload: Map<String, String>): Boolean {
+        val event = SupervisorPushEvent.fromPayload(payload) ?: return false
+        emitSupervisorPushEvent(event)
+        return true
+    }
+
     private suspend fun resolveRequest(
         requestId: String,
         resolutionLabel: String,

@@ -3,7 +3,6 @@ package com.yepanywhere.android
 import android.app.Application
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.yepanywhere.android.core.model.SupervisorPushEvent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -27,14 +26,17 @@ class AndroidAppContainerPushEventTest {
         )
         val job = container.supervisorPushEventCollector.start(backgroundScope)
 
-        container.androidDataLayer.emitSupervisorPushEvent(
-            SupervisorPushEvent.PendingInput(
-                sessionId = "session-container",
-                projectId = "project-container",
-                projectName = "Container Project",
-                inputType = "user-question",
-                summary = "Confirm foreground event wiring?",
-                requestId = "request-container",
+        org.junit.Assert.assertTrue(
+            container.androidDataLayer.emitSupervisorPushPayload(
+                mapOf(
+                    "type" to "pending-input",
+                    "sessionId" to "session-container",
+                    "projectId" to "project-container",
+                    "projectName" to "Container Project",
+                    "inputType" to "user-question",
+                    "summary" to "Confirm foreground event wiring?",
+                    "requestId" to "request-container",
+                ),
             ),
         )
         advanceUntilIdle()

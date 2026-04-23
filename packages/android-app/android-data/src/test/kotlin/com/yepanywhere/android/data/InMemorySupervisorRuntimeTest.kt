@@ -112,6 +112,15 @@ class InMemorySupervisorRuntimeTest {
         val runtime = InMemorySupervisorRuntime(
             scope = backgroundScope,
         )
+        val payload = mapOf(
+            "type" to "pending-input",
+            "sessionId" to "session-stream",
+            "projectId" to "project-stream",
+            "projectName" to "Stream Project",
+            "inputType" to "user-question",
+            "summary" to "Stream question",
+            "requestId" to "request-stream",
+        )
         val event = SupervisorPushEvent.PendingInput(
             sessionId = "session-stream",
             projectId = "project-stream",
@@ -125,9 +134,26 @@ class InMemorySupervisorRuntimeTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             runtime.relayConnectionClient.supervisorPushEventStream().take(1).toList(events)
         }
-        runtime.emitSupervisorPushEvent(event)
+        assertTrue(runtime.emitSupervisorPushPayload(payload))
         advanceUntilIdle()
 
         assertEquals(listOf<SupervisorPushEvent>(event), events)
+    }
+
+    @Test
+    fun invalidSupervisorPushPayloadIsDroppedBeforeRelayStream() = runTest(UnconfinedTestDispatcher()) {
+        val runtime = InMemorySupervisorRuntime(
+            scope = backgroundScope,
+        )
+        val events = mutableListOf<SupervisorPushEvent>()
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            runtime.relayConnectionClient.supervisorPushEventStream().take(1).toList(events)
+        }
+
+        assertFalse(runtime.emitSupervisorPushPayload(mapOf("type" to "dismiss")))
+        advanceUntilIdle()
+
+        assertTrue(events.isEmpty())
     }
 }
