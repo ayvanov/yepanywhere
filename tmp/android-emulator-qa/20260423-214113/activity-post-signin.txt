@@ -1,0 +1,1 @@
+    topResumedActivity=ActivityRecord{fc45626 u0 com.yepanywhere.android.debug/com.yepanywhere.android.MainActivity t200}

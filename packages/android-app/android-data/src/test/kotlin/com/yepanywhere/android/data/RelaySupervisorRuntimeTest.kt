@@ -22,6 +22,77 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RelaySupervisorRuntimeTest {
     @Test
+    fun loginUsesStoredSessionUsernameAsRoutingFallbackWhenConfigMissing() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = { username, _, relayUrl, _ ->
+                SecureRelayAuthHandshakeResult(
+                    session = RelaySession(
+                        username = username,
+                        relayUrl = relayUrl,
+                        sessionId = "relay-session-1",
+                    ),
+                    persistedSession = StoredRelaySession(
+                        wsUrl = relayUrl,
+                        username = username,
+                        sessionId = "relay-session-1",
+                        sessionKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                    ),
+                    clearedStoredSession = false,
+                    transportNonce = null,
+                    resumed = false,
+                )
+            },
+        )
+
+        runtime.relayAuthRepository.login(
+            username = "home-pc",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        assertEquals("home-pc", gateway.routingUsername)
+    }
+
+    @Test
+    fun loginPrefersConfiguredRelayRoutingUsername() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            relayRoutingUsername = "relay-user",
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = { username, _, relayUrl, _ ->
+                SecureRelayAuthHandshakeResult(
+                    session = RelaySession(
+                        username = username,
+                        relayUrl = relayUrl,
+                        sessionId = "relay-session-1",
+                    ),
+                    persistedSession = StoredRelaySession(
+                        wsUrl = relayUrl,
+                        username = username,
+                        sessionId = "relay-session-1",
+                        sessionKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                    ),
+                    clearedStoredSession = false,
+                    transportNonce = null,
+                    resumed = false,
+                )
+            },
+        )
+
+        runtime.relayAuthRepository.login(
+            username = "home-pc",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        assertEquals("relay-user", gateway.routingUsername)
+    }
+
+    @Test
     fun loginLoadsProjectsSessionsInboxAndTimelineFromBackend() = runTest(UnconfinedTestDispatcher()) {
         val gateway = FakeRelayRealtimeGateway()
         val runtime = RelaySupervisorRuntime(
@@ -115,6 +186,7 @@ class RelaySupervisorRuntimeTest {
         private val state = MutableStateFlow(RelayConnectionStatus.DISCONNECTED)
         private val events = MutableSharedFlow<RelayRealtimeEvent>()
         val requests = mutableListOf<RecordedRequest>()
+        var routingUsername: String? = null
 
         override val connectionState: Flow<RelayConnectionStatus> = state
 
@@ -123,7 +195,9 @@ class RelaySupervisorRuntimeTest {
         override suspend fun connect(
             relayUrl: String,
             storedSession: StoredRelaySession,
+            routingUsername: String?,
         ) {
+            this.routingUsername = routingUsername
             state.value = RelayConnectionStatus.CONNECTED
         }
 

@@ -73,6 +73,7 @@ interface RelayRealtimeGateway {
     suspend fun connect(
         relayUrl: String,
         storedSession: StoredRelaySession,
+        routingUsername: String? = null,
     )
 
     suspend fun disconnect()
@@ -144,7 +145,6 @@ private data class EncryptedEnvelopeMessage(
 internal class RelayRealtimeClient(
     private val scope: CoroutineScope,
     private val httpClient: HttpClient,
-    private val relayRoutingUsername: String? = null,
     private val secureRandom: SecureRandom = SecureRandom(),
 ) : RelayRealtimeGateway {
     private val json = Json {
@@ -176,27 +176,17 @@ internal class RelayRealtimeClient(
     override suspend fun connect(
         relayUrl: String,
         storedSession: StoredRelaySession,
+        routingUsername: String?,
     ) {
         disconnect()
         connectionStateMutable.value = RelayConnectionStatus.CONNECTING
         try {
             withTimeout(RELAY_REALTIME_CONNECT_TIMEOUT_MS) {
-                val firstAttempt = runCatching {
-                    connectInternal(
-                        relayUrl = relayUrl,
-                        storedSession = storedSession,
-                        routingUsername = relayRoutingUsername,
-                    )
-                }
-                if (firstAttempt.isFailure && relayRoutingUsername == null) {
-                    connectInternal(
-                        relayUrl = relayUrl,
-                        storedSession = storedSession,
-                        routingUsername = storedSession.username,
-                    )
-                } else {
-                    firstAttempt.getOrThrow()
-                }
+                connectInternal(
+                    relayUrl = relayUrl,
+                    storedSession = storedSession,
+                    routingUsername = routingUsername,
+                )
             }
         } catch (_: TimeoutCancellationException) {
             disconnect()

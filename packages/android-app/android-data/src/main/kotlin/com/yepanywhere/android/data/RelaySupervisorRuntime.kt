@@ -75,7 +75,7 @@ class RelaySupervisorRuntime(
         relayUrl: String,
         storedSession: StoredRelaySession?,
     ) -> SecureRelayAuthHandshakeResult,
-    relayRoutingUsername: String? = null,
+    private val relayRoutingUsername: String? = null,
     realtimeGatewayOverride: RelayRealtimeGateway? = null,
     cacheStore: SessionCacheStore = InMemorySessionCacheStore(initialSnapshot),
 ) : SupervisorRuntime {
@@ -93,7 +93,6 @@ class RelaySupervisorRuntime(
     private val realtime: RelayRealtimeGateway = realtimeGatewayOverride ?: RelayRealtimeClient(
         scope = scope,
         httpClient = createRealtimeHttpClient(),
-        relayRoutingUsername = relayRoutingUsername,
     )
     private val subscriptionMutex = Mutex()
     private val sessionSubscriptions = mutableMapOf<String, String>()
@@ -462,6 +461,7 @@ class RelaySupervisorRuntime(
                 realtime.connect(
                     relayUrl = relayUrl,
                     storedSession = storedSession,
+                    routingUsername = relayRoutingUsername ?: storedSession.username,
                 )
                 ensureActivitySubscription()
             }

@@ -428,6 +428,7 @@ class AndroidDataLayerTest {
         override suspend fun connect(
             relayUrl: String,
             storedSession: StoredRelaySession,
+            routingUsername: String?,
         ) {
             connection.value = RelayConnectionStatus.CONNECTED
         }
@@ -484,6 +485,7 @@ class AndroidDataLayerTest {
         override suspend fun connect(
             relayUrl: String,
             storedSession: StoredRelaySession,
+            routingUsername: String?,
         ) {
             connection.value = RelayConnectionStatus.CONNECTED
         }
@@ -526,6 +528,7 @@ class AndroidDataLayerTest {
         override suspend fun connect(
             relayUrl: String,
             storedSession: StoredRelaySession,
+            routingUsername: String?,
         ) {
             connection.value = RelayConnectionStatus.CONNECTING
             awaitCancellation()
