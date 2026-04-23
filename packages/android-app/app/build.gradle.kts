@@ -69,6 +69,10 @@ dependencies {
     implementation(compose.ui)
     implementation(compose.foundation)
     implementation(compose.material3)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.bouncycastle.bcprov)
+    implementation(libs.tweetnacl.java)
 
     debugImplementation(compose.uiTooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

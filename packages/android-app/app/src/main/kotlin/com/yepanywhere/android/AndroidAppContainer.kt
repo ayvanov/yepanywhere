@@ -20,9 +20,15 @@ class AndroidAppContainer(
     relayAuthSettings: AndroidRelayAuthSettings = AndroidRelayAuthSettings.fromBuildConfig(),
     relayAuthRunner: AndroidRelayAuthRunner? = null,
 ) {
+    private val effectiveRelayAuthRunner: AndroidRelayAuthRunner? = relayAuthRunner
+        ?: when (relayAuthSettings.mode) {
+            AndroidRelayAuthMode.DEMO -> null
+            AndroidRelayAuthMode.RELAY -> AndroidKtorRelayAuthRunner.createDefault()
+        }
+
     private val relayAuthHandshakeExecutor = AndroidRelayAuthHandshakeExecutor(
         settings = relayAuthSettings,
-        relayAuthRunner = relayAuthRunner,
+        relayAuthRunner = effectiveRelayAuthRunner,
     )
     val androidDataLayer = AndroidDataLayer(
         relayAuthHandshake = relayAuthHandshakeExecutor::execute,
