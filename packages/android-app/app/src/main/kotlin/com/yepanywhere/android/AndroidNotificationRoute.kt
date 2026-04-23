@@ -53,6 +53,15 @@ data class AndroidNotificationRoute(
             )
         }
 
+        fun fromData(data: Map<String, String>): AndroidNotificationRoute? {
+            return fromPayload(
+                target = data["target"],
+                projectId = data["projectId"],
+                sessionId = data["sessionId"],
+                inboxItemId = data["inboxItemId"] ?: data["itemId"],
+            )
+        }
+
         fun fromDeepLink(rawUri: String?): AndroidNotificationRoute? {
             if (rawUri.isNullOrBlank()) {
                 return null

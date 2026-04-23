@@ -53,6 +53,30 @@ class AndroidNotificationRouteTest {
     }
 
     @Test
+    fun dataPayloadRoutesLikeFcmMetadata() {
+        assertEquals(
+            AndroidNotificationRoute(
+                section = SupervisorShellSection.INBOX,
+                projectId = "project-1",
+                sessionId = "session-1",
+                inboxItemId = "inbox-1",
+            ),
+            AndroidNotificationRoute.fromData(
+                mapOf(
+                    "target" to "inbox",
+                    "projectId" to "project-1",
+                    "sessionId" to "session-1",
+                    "inboxItemId" to "inbox-1",
+                ),
+            ),
+        )
+        assertEquals(
+            SupervisorShellSection.ACTIVE,
+            AndroidNotificationRoute.fromData(mapOf("sessionId" to "session-1"))?.section,
+        )
+    }
+
+    @Test
     fun deepLinkRoutesKnownPaths() {
         assertEquals(
             AndroidNotificationRoute(
