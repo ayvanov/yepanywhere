@@ -50,25 +50,6 @@ class SupervisorShellViewModelTest {
     }
 
     @Test
-    fun connectsDemoSessionOnlyOnce() = runTest {
-        val source = FakeSupervisorShellDataSource()
-        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-        val viewModel = SupervisorShellViewModel(
-            dataSource = source,
-            scope = externalScope,
-        )
-
-        viewModel.ensureDemoSessionConnected()
-        viewModel.ensureDemoSessionConnected()
-
-        advanceUntilIdle()
-
-        assertEquals(1, source.connectCalls)
-
-        externalScope.cancel()
-    }
-
-    @Test
     fun appliesNotificationRouteBySelectingTargetSection() = runTest {
         val source = FakeSupervisorShellDataSource()
         val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
@@ -104,10 +85,10 @@ class SupervisorShellViewModelTest {
         override val summary: String = "Android-owned cache and secure relay session persistence."
         override val shellState = MutableStateFlow(defaultSupervisorShellSnapshot())
 
-        var connectCalls: Int = 0
+        override suspend fun reconnectPersistedSession(): Boolean = false
 
-        override suspend fun connectDemoSession() {
-            connectCalls += 1
-        }
+        override suspend fun login(credentials: com.yepanywhere.android.data.RelayCredentials) = Unit
+
+        override suspend fun restorePersistedCredentials(): com.yepanywhere.android.data.RelayCredentials? = null
     }
 }

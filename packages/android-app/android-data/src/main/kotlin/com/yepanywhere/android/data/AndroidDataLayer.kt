@@ -16,7 +16,11 @@ interface SupervisorShellDataSource {
     val summary: String
     val shellState: StateFlow<SupervisorShellSnapshot>
 
-    suspend fun connectDemoSession()
+    suspend fun reconnectPersistedSession(): Boolean
+
+    suspend fun login(credentials: RelayCredentials)
+
+    suspend fun restorePersistedCredentials(): RelayCredentials?
 }
 
 interface SupervisorFeatureDependencies {
@@ -31,10 +35,11 @@ class AndroidDataLayer(
     runtimeOverride: InMemorySupervisorRuntime? = null,
     relayAuthHandshake: (suspend (
         username: String,
-        password: String,
+        password: String?,
         relayUrl: String,
         storedSession: StoredRelaySession?,
     ) -> SecureRelayAuthHandshakeResult)? = null,
+    private val relayAuthStateStore: RelayAuthStateStore = InMemoryRelayAuthStateStore(),
 ) : SupervisorShellDataSource, SupervisorFeatureDependencies {
     private val runtime: InMemorySupervisorRuntime = runtimeOverride ?: if (relayAuthHandshake != null) {
         InMemorySupervisorRuntime(relayAuthHandshake = relayAuthHandshake)
@@ -52,8 +57,48 @@ class AndroidDataLayer(
     override val approvalsRepository: ApprovalsRepository = runtime.approvalsRepository
     val relayConnectionClient: RelayConnectionClient = runtime.relayConnectionClient
 
-    override suspend fun connectDemoSession() {
-        runtime.connectDemoSession()
+    override suspend fun reconnectPersistedSession(): Boolean {
+        val persistedState = relayAuthStateStore.read() ?: return false
+        persistedState.storedSession?.let { runtime.relayAuthRepository.persistStoredSession(it) }
+
+        return try {
+            runtime.relayAuthRepository.login(
+                username = persistedState.credentials.username,
+                password = persistedState.credentials.password,
+                relayUrl = persistedState.credentials.relayUrl,
+            )
+            persistRelayAuthState(persistedState.credentials)
+            true
+        } catch (_: Throwable) {
+            runtime.relayAuthRepository.clearSession()
+            false
+        }
+    }
+
+    override suspend fun login(credentials: RelayCredentials) {
+        val normalizedCredentials = credentials.copy(
+            relayUrl = credentials.relayUrl.trim(),
+            username = credentials.username.trim(),
+        )
+        runtime.relayAuthRepository.login(
+            username = normalizedCredentials.username,
+            password = normalizedCredentials.password,
+            relayUrl = normalizedCredentials.relayUrl,
+        )
+        persistRelayAuthState(normalizedCredentials)
+    }
+
+    override suspend fun restorePersistedCredentials(): RelayCredentials? {
+        return relayAuthStateStore.read()?.credentials
+    }
+
+    private suspend fun persistRelayAuthState(credentials: RelayCredentials) {
+        relayAuthStateStore.write(
+            PersistedRelayAuthState(
+                credentials = credentials,
+                storedSession = runtime.relayAuthRepository.restoreStoredSession(),
+            ),
+        )
     }
 
     suspend fun applyPendingInputNotification(

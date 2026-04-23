@@ -47,7 +47,7 @@ class InMemorySupervisorRuntime(
     },
     private val relayAuthHandshake: suspend (
         username: String,
-        password: String,
+        password: String?,
         relayUrl: String,
         storedSession: StoredRelaySession?,
     ) -> SecureRelayAuthHandshakeResult = { username, _, relayUrl, _ ->
@@ -86,7 +86,7 @@ class InMemorySupervisorRuntime(
     val relayAuthRepository: RelayAuthRepository = object : RelayAuthRepository {
         override suspend fun login(
             username: String,
-            password: String,
+            password: String?,
             relayUrl: String,
         ): RelaySession {
             connectionState.value = RelayConnectionStatus.CONNECTING
@@ -272,14 +272,6 @@ class InMemorySupervisorRuntime(
         started = SharingStarted.Eagerly,
         initialValue = initialSnapshot,
     )
-
-    suspend fun connectDemoSession() {
-        relayAuthRepository.login(
-            username = "demo@yepanywhere",
-            password = "demo",
-            relayUrl = "wss://relay.yepanywhere.local",
-        )
-    }
 
     suspend fun applyPendingInputNotification(
         sessionId: String,

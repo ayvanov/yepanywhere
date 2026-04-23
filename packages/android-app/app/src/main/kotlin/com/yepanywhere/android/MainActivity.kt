@@ -8,13 +8,28 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.yepanywhere.android.ui.ActiveSessionCallbacks
+import com.yepanywhere.android.ui.AndroidAppTheme
 import com.yepanywhere.android.ui.SupervisorShellScreen
 import kotlinx.coroutines.Job
 
@@ -43,6 +58,9 @@ class MainActivity : ComponentActivity() {
     private val activeSessionViewModel: ActiveSessionViewModel by viewModels {
         appContainer.createActiveSessionViewModelFactory()
     }
+    private val relayLoginViewModel: RelayLoginViewModel by viewModels {
+        appContainer.createRelayLoginViewModelFactory()
+    }
     private var foregroundPushEventJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +76,7 @@ class MainActivity : ComponentActivity() {
                 sessionsViewModel = sessionsViewModel,
                 inboxViewModel = inboxViewModel,
                 activeSessionViewModel = activeSessionViewModel,
+                relayLoginViewModel = relayLoginViewModel,
             )
         }
     }
@@ -100,7 +119,9 @@ private fun YepAnywhereAndroidApp(
     sessionsViewModel: SessionsScreenViewModel,
     inboxViewModel: InboxScreenViewModel,
     activeSessionViewModel: ActiveSessionViewModel,
+    relayLoginViewModel: RelayLoginViewModel,
 ) {
+    val loginState by relayLoginViewModel.uiState.collectAsState()
     val shellState by shellViewModel.uiState.collectAsState()
     val projectsState by projectsViewModel.uiState.collectAsState()
     val sessionsState by sessionsViewModel.uiState.collectAsState()
@@ -110,19 +131,29 @@ private fun YepAnywhereAndroidApp(
         createActiveSessionCallbacks(activeSessionViewModel)
     }
 
-    LaunchedEffect(shellViewModel) {
-        shellViewModel.ensureDemoSessionConnected()
+    LaunchedEffect(relayLoginViewModel) {
+        relayLoginViewModel.initialize()
     }
 
-    SupervisorShellScreen(
-        state = shellState,
-        projectsState = projectsState,
-        sessionsState = sessionsState,
-        inboxState = inboxState,
-        activeSessionState = activeSessionState,
-        activeSessionCallbacks = activeSessionCallbacks,
-        onSectionSelected = shellViewModel::selectSection,
-    )
+    if (loginState.isAuthenticated) {
+        SupervisorShellScreen(
+            state = shellState,
+            projectsState = projectsState,
+            sessionsState = sessionsState,
+            inboxState = inboxState,
+            activeSessionState = activeSessionState,
+            activeSessionCallbacks = activeSessionCallbacks,
+            onSectionSelected = shellViewModel::selectSection,
+        )
+    } else {
+        RelayLoginScreen(
+            state = loginState,
+            onRelayUrlChanged = relayLoginViewModel::updateRelayUrl,
+            onUsernameChanged = relayLoginViewModel::updateUsername,
+            onPasswordChanged = relayLoginViewModel::updatePassword,
+            onSubmit = relayLoginViewModel::submitLogin,
+        )
+    }
 }
 
 internal fun createActiveSessionCallbacks(handler: ActiveSessionCommandHandler): ActiveSessionCallbacks {
@@ -132,5 +163,92 @@ internal fun createActiveSessionCallbacks(handler: ActiveSessionCommandHandler):
         onDenyRequest = handler::deny,
         onAnswerQuestion = handler::answerQuestion,
     )
+}
+
+@Composable
+private fun RelayLoginScreen(
+    state: RelayLoginUiState,
+    onRelayUrlChanged: (String) -> Unit,
+    onUsernameChanged: (String) -> Unit,
+    onPasswordChanged: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    AndroidAppTheme {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = "Relay login",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Text(
+                        text = "Sign in to restore or start a secure relay session.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    if (state.isInitializing) {
+                        CircularProgressIndicator()
+                        Text(
+                            text = "Checking persisted session...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = state.relayUrl,
+                            onValueChange = onRelayUrlChanged,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Relay URL") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = state.username,
+                            onValueChange = onUsernameChanged,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Identity") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = state.password,
+                            onValueChange = onPasswordChanged,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Password") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                        )
+
+                        state.errorMessage?.let { errorMessage ->
+                            Text(
+                                text = errorMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+
+                        Button(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onSubmit,
+                            enabled = !state.isSubmitting,
+                        ) {
+                            Text(if (state.isSubmitting) "Signing in..." else "Sign in")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 

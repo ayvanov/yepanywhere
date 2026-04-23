@@ -19,7 +19,7 @@ interface RelayPushPayloadSource {
 interface RelayAuthRepository {
     suspend fun login(
         username: String,
-        password: String,
+        password: String?,
         relayUrl: String,
     ): RelaySession
 

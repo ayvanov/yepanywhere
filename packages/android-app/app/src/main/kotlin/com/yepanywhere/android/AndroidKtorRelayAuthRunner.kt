@@ -15,7 +15,7 @@ class AndroidKtorRelayAuthRunner(
         relayUrl: String,
         relayUsername: String?,
         identity: String,
-        password: String,
+        password: String?,
         storedSession: StoredRelaySession?,
     ): SecureRelayAuthHandshakeResult {
         return handshakeRunner.run(

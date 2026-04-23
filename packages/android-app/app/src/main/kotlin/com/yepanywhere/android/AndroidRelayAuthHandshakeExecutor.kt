@@ -10,7 +10,7 @@ fun interface AndroidRelayAuthRunner {
         relayUrl: String,
         relayUsername: String?,
         identity: String,
-        password: String,
+        password: String?,
         storedSession: StoredRelaySession?,
     ): SecureRelayAuthHandshakeResult
 }
@@ -21,7 +21,7 @@ class AndroidRelayAuthHandshakeExecutor(
 ) {
     suspend fun execute(
         username: String,
-        password: String,
+        password: String?,
         relayUrl: String,
         storedSession: StoredRelaySession?,
     ): SecureRelayAuthHandshakeResult {

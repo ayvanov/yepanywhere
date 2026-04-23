@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 class SupervisorShellViewModel(
     private val dataSource: SupervisorShellDataSource,
@@ -20,7 +19,6 @@ class SupervisorShellViewModel(
 ) : ViewModel() {
     private val coroutineScope = scope ?: viewModelScope
     private val selectedSection = MutableStateFlow(SupervisorShellSection.ACTIVE)
-    private var hasRequestedDemoConnect = false
 
     val uiState: StateFlow<SupervisorShellScreenState> = combine(
         dataSource.shellState,
@@ -49,17 +47,6 @@ class SupervisorShellViewModel(
 
     fun applyNotificationRoute(route: AndroidNotificationRoute) {
         selectSection(route.section)
-    }
-
-    fun ensureDemoSessionConnected() {
-        if (hasRequestedDemoConnect) {
-            return
-        }
-
-        hasRequestedDemoConnect = true
-        coroutineScope.launch {
-            dataSource.connectDemoSession()
-        }
     }
 
     companion object {

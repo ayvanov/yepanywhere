@@ -32,6 +32,7 @@ class AndroidAppContainer(
     )
     val androidDataLayer = AndroidDataLayer(
         relayAuthHandshake = relayAuthHandshakeExecutor::execute,
+        relayAuthStateStore = AndroidSharedPreferencesRelayAuthStateStore(application),
     )
     private val notificationPoster = AndroidNotificationPoster(application)
     private val notificationEventDispatcher = AndroidNotificationEventDispatcher(notificationPoster)
@@ -62,6 +63,10 @@ class AndroidAppContainer(
 
     fun createSupervisorShellViewModelFactory(): ViewModelProvider.Factory {
         return SupervisorShellViewModel.factory(androidDataLayer)
+    }
+
+    fun createRelayLoginViewModelFactory(): ViewModelProvider.Factory {
+        return RelayLoginViewModel.factory(androidDataLayer)
     }
 
     fun createProjectsScreenViewModelFactory(): ViewModelProvider.Factory {
