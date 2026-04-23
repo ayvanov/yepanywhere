@@ -38,6 +38,28 @@ class AndroidDataLayer(
         runtime.connectDemoSession()
     }
 
+    suspend fun applyPendingInputNotification(
+        sessionId: String,
+        projectId: String,
+        projectName: String,
+        inputType: String,
+        summary: String,
+        requestId: String,
+    ) {
+        runtime.applyPendingInputNotification(
+            sessionId = sessionId,
+            projectId = projectId,
+            projectName = projectName,
+            inputType = inputType,
+            summary = summary,
+            requestId = requestId,
+        )
+    }
+
+    suspend fun clearSessionAttention(sessionId: String) {
+        runtime.clearSessionAttention(sessionId)
+    }
+
     companion object {
         const val SUMMARY: String =
             "Android-owned cache/storage layer for Room, DataStore, and secure relay session persistence."

@@ -22,6 +22,10 @@ class AndroidAppContainer(
         dispatcher = notificationEventDispatcher,
         poster = notificationPoster,
     )
+    val supervisorPushEventHandler = AndroidSupervisorPushEventHandler(
+        dataLayer = androidDataLayer,
+        notificationPayloadHandler = pushNotificationPayloadHandler,
+    )
     private val observeProjectsUseCase = ObserveProjectsUseCase(androidDataLayer.projectsRepository)
     private val observeSessionsUseCase = ObserveSessionsUseCase(androidDataLayer.sessionsRepository)
     private val observeInboxUseCase = ObserveInboxUseCase(androidDataLayer.inboxRepository)

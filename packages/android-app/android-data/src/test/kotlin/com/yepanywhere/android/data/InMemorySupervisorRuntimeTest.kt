@@ -47,4 +47,58 @@ class InMemorySupervisorRuntimeTest {
         )
         assertEquals("just now", snapshot.sessions.first { it.id == "session-android-shell" }.updatedLabel)
     }
+
+    @Test
+    fun pendingInputNotificationUpdatesCacheSnapshot() = runTest(UnconfinedTestDispatcher()) {
+        val runtime = InMemorySupervisorRuntime(
+            scope = backgroundScope,
+        )
+
+        runtime.applyPendingInputNotification(
+            sessionId = "session-new",
+            projectId = "project-new",
+            projectName = "New Project",
+            inputType = "user-question",
+            summary = "Choose deployment target?",
+            requestId = "request-new",
+        )
+
+        val snapshot = runtime.shellState.value
+        assertTrue(snapshot.projects.any { it.id == "project-new" && it.name == "New Project" })
+        assertTrue(
+            snapshot.sessions.any { session ->
+                session.id == "session-new" &&
+                    session.status.name == "NEEDS_ATTENTION" &&
+                    session.hasUnread
+            },
+        )
+        assertTrue(
+            snapshot.inboxItems.any { item ->
+                item.id == "inbox-request-new" &&
+                    item.sessionId == "session-new" &&
+                    item.isUnread
+            },
+        )
+        assertTrue(
+            snapshot.pendingRequests.any { request ->
+                request.id == "request-new" &&
+                    request.sessionId == "session-new" &&
+                    request.body == "Choose deployment target?"
+            },
+        )
+    }
+
+    @Test
+    fun clearingSessionAttentionResolvesCachedPendingInput() = runTest(UnconfinedTestDispatcher()) {
+        val runtime = InMemorySupervisorRuntime(
+            scope = backgroundScope,
+        )
+
+        runtime.clearSessionAttention("session-approval")
+
+        val snapshot = runtime.shellState.value
+        assertFalse(snapshot.pendingRequests.any { it.sessionId == "session-approval" })
+        assertFalse(snapshot.inboxItems.first { it.sessionId == "session-approval" }.isUnread)
+        assertFalse(snapshot.sessions.first { it.id == "session-approval" }.hasUnread)
+    }
 }

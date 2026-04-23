@@ -220,6 +220,113 @@ class InMemorySupervisorRuntime(
         )
     }
 
+    suspend fun applyPendingInputNotification(
+        sessionId: String,
+        projectId: String,
+        projectName: String,
+        inputType: String,
+        summary: String,
+        requestId: String,
+    ) {
+        val kind = when (inputType) {
+            "tool-approval" -> InboxItemKind.APPROVAL
+            else -> InboxItemKind.QUESTION
+        }
+
+        val projects = cache.observeProjects().first()
+        if (projects.none { it.id == projectId }) {
+            cache.storeProjects(
+                projects + ProjectSummary(
+                    id = projectId,
+                    name = projectName,
+                ),
+            )
+        }
+
+        val sessions = cache.observeSessions().first()
+        cache.storeSessions(
+            sessions
+                .filterNot { it.id == sessionId }
+                .plus(
+                    SessionSummary(
+                        id = sessionId,
+                        projectId = projectId,
+                        title = summary,
+                        status = SessionStatus.NEEDS_ATTENTION,
+                        updatedLabel = "just now",
+                        hasUnread = true,
+                    ),
+                ),
+        )
+
+        val inboxId = "inbox-$requestId"
+        val inboxItems = cache.observeInboxItems().first()
+        cache.storeInboxItems(
+            inboxItems
+                .filterNot { it.id == inboxId }
+                .plus(
+                    InboxItem(
+                        id = inboxId,
+                        projectId = projectId,
+                        sessionId = sessionId,
+                        title = if (kind == InboxItemKind.APPROVAL) "Approval required" else "Question",
+                        subtitle = summary,
+                        kind = kind,
+                        isUnread = true,
+                    ),
+                ),
+        )
+
+        val pendingRequests = cache.observePendingRequests().first()
+        cache.storePendingRequests(
+            pendingRequests
+                .filterNot { it.id == requestId }
+                .plus(
+                    PendingInputRequest(
+                        id = requestId,
+                        sessionId = sessionId,
+                        title = if (kind == InboxItemKind.APPROVAL) "Approval required" else "Question",
+                        body = summary,
+                        kind = kind,
+                    ),
+                ),
+        )
+
+        inboxInvalidations.tryEmit(Unit)
+    }
+
+    suspend fun clearSessionAttention(sessionId: String) {
+        cache.storePendingRequests(
+            cache.observePendingRequests().first().filterNot { it.sessionId == sessionId },
+        )
+
+        cache.storeInboxItems(
+            cache.observeInboxItems().first().map { item ->
+                if (item.sessionId == sessionId) {
+                    item.copy(isUnread = false)
+                } else {
+                    item
+                }
+            },
+        )
+
+        cache.storeSessions(
+            cache.observeSessions().first().map { session ->
+                if (session.id == sessionId) {
+                    session.copy(
+                        status = SessionStatus.RUNNING,
+                        updatedLabel = "resolved now",
+                        hasUnread = false,
+                    )
+                } else {
+                    session
+                }
+            },
+        )
+
+        inboxInvalidations.tryEmit(Unit)
+    }
+
     private suspend fun resolveRequest(
         requestId: String,
         resolutionLabel: String,
