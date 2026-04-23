@@ -3,6 +3,35 @@ package com.yepanywhere.android.core.model
 sealed interface SupervisorPushEvent {
     val type: String
 
+    fun toPayload(): Map<String, String> {
+        return when (this) {
+            is PendingInput -> buildMap {
+                put("type", type)
+                put("sessionId", sessionId)
+                put("projectId", projectId)
+                put("projectName", projectName)
+                put("inputType", inputType)
+                put("summary", summary)
+                requestId?.let { put("requestId", it) }
+            }
+
+            is SessionHalted -> buildMap {
+                put("type", type)
+                put("sessionId", sessionId)
+                put("projectId", projectId)
+                put("projectName", projectName)
+                reason?.let { put("reason", it) }
+            }
+
+            is Dismiss -> mapOf(
+                "type" to type,
+                "sessionId" to sessionId,
+            )
+
+            is Unknown -> mapOf("type" to type)
+        }
+    }
+
     data class PendingInput(
         val sessionId: String,
         val projectId: String,

@@ -12,6 +12,7 @@ import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.model.SupervisorPushEvent
+import com.yepanywhere.android.core.model.SupervisorPushEventStreamAdapter
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.core.repository.ApprovalsRepository
 import com.yepanywhere.android.core.repository.InboxRepository
@@ -42,7 +43,8 @@ class InMemorySupervisorRuntime(
     private val storedSession = MutableStateFlow<RelaySession?>(null)
     private val connectionState = MutableStateFlow(initialSnapshot.connectionStatus)
     private val inboxInvalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    private val supervisorPushEvents = MutableSharedFlow<SupervisorPushEvent>(extraBufferCapacity = 64)
+    private val supervisorPushPayloads = MutableSharedFlow<Map<String, String>>(extraBufferCapacity = 64)
+    private val supervisorPushEvents = SupervisorPushEventStreamAdapter(supervisorPushPayloads).events()
 
     val relayAuthRepository: RelayAuthRepository = object : RelayAuthRepository {
         override suspend fun login(
@@ -332,12 +334,12 @@ class InMemorySupervisorRuntime(
     }
 
     suspend fun emitSupervisorPushEvent(event: SupervisorPushEvent) {
-        supervisorPushEvents.emit(event)
+        supervisorPushPayloads.emit(event.toPayload())
     }
 
     suspend fun emitSupervisorPushPayload(payload: Map<String, String>): Boolean {
         val event = SupervisorPushEvent.fromPayload(payload) ?: return false
-        emitSupervisorPushEvent(event)
+        supervisorPushPayloads.emit(event.toPayload())
         return true
     }
 
