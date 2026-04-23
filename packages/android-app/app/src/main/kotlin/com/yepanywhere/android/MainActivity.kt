@@ -1,7 +1,9 @@
 package com.yepanywhere.android
 
+import android.Manifest
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,6 +17,12 @@ import com.yepanywhere.android.ui.ActiveSessionCallbacks
 import com.yepanywhere.android.ui.SupervisorShellScreen
 
 class MainActivity : ComponentActivity() {
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        // The poster re-checks permission before notifying, so no state is needed here.
+    }
+
     private val appContainer: AndroidAppContainer
         get() = (application as YepAnywhereAndroidApplication).appContainer
 
@@ -38,6 +46,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applyNotificationRoute(intent)
+        requestNotificationPermissionIfNeeded()
 
         setContent {
             YepAnywhereAndroidApp(
@@ -58,6 +67,13 @@ class MainActivity : ComponentActivity() {
 
     private fun applyNotificationRoute(intent: Intent?) {
         AndroidNotificationRoute.fromIntent(intent)?.let(shellViewModel::applyNotificationRoute)
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        AndroidNotificationPermissionRequester(
+            checkPermission = { checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) },
+            requestPermission = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+        ).requestIfNeeded()
     }
 }
 
