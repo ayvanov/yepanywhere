@@ -25,7 +25,7 @@ class KtorSecureRelayAuthHandshakeRunnerTest {
             proofProvider = FakeSecureRelayProofProvider(
                 resumeProof = """{"nonce":"resume-nonce","ciphertext":"resume-ciphertext"}""",
             ),
-            transportFactory = { _ ->
+            transportFactory = { _, _ ->
                 createdTransports += 1
                 transport
             },
@@ -66,6 +66,55 @@ class KtorSecureRelayAuthHandshakeRunnerTest {
             socket.sentTexts,
         )
         assertTrue(socket.closed)
+    }
+
+    @Test
+    fun runForwardsRelayUsernameIntoTransportFactory() = runTest {
+        val socket = FakeSecureRelayAuthSocket(
+            incomingTexts = ArrayDeque(
+                listOf(
+                    """{"type":"client_connected"}""",
+                    """{"type":"srp_resume_challenge","sessionId":"session-1","nonce":"resume-challenge"}""",
+                    """{"type":"srp_resumed","sessionId":"session-1","transportNonce":"transport-nonce"}""",
+                ),
+            ),
+        )
+        var capturedRelayUsername: String? = null
+        val runner = KtorSecureRelayAuthHandshakeRunner(
+            proofProvider = FakeSecureRelayProofProvider(
+                resumeProof = """{"nonce":"resume-nonce","ciphertext":"resume-ciphertext"}""",
+            ),
+            transportFactory = { _, relayUsername ->
+                capturedRelayUsername = relayUsername
+                KtorSecureRelayAuthTransport(
+                    relayUsername = relayUsername,
+                    sessionFactory = { socket },
+                )
+            },
+        )
+
+        runner.run(
+            relayUrl = "wss://relay.yepanywhere.local",
+            relayUsername = "relay-user",
+            identity = "demo@yepanywhere",
+            password = "secret",
+            storedSession = StoredRelaySession(
+                wsUrl = "wss://relay.yepanywhere.local",
+                username = "demo@yepanywhere",
+                sessionId = "session-1",
+                sessionKey = "stored-session-key",
+            ),
+        )
+
+        assertEquals("relay-user", capturedRelayUsername)
+        assertEquals(
+            listOf(
+                """{"type":"client_connect","username":"relay-user"}""",
+                """{"type":"srp_resume_init","identity":"demo@yepanywhere","sessionId":"session-1"}""",
+                """{"type":"srp_resume","identity":"demo@yepanywhere","sessionId":"session-1","proof":"{\"nonce\":\"resume-nonce\",\"ciphertext\":\"resume-ciphertext\"}"}""",
+            ),
+            socket.sentTexts,
+        )
     }
 
     private class FakeSecureRelayProofProvider(
