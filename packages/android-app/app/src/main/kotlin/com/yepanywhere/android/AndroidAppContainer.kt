@@ -12,8 +12,15 @@ import com.yepanywhere.android.core.usecase.ObserveProjectsUseCase
 import com.yepanywhere.android.core.usecase.ObserveSessionsUseCase
 import com.yepanywhere.android.core.usecase.SendSessionReplyUseCase
 
-class AndroidAppContainer {
+class AndroidAppContainer(
+    application: Application,
+) {
     val androidDataLayer = AndroidDataLayer()
+    val pushNotificationPayloadHandler = AndroidPushNotificationPayloadHandler(
+        AndroidNotificationEventDispatcher(
+            AndroidNotificationPoster(application),
+        ),
+    )
     private val observeProjectsUseCase = ObserveProjectsUseCase(androidDataLayer.projectsRepository)
     private val observeSessionsUseCase = ObserveSessionsUseCase(androidDataLayer.sessionsRepository)
     private val observeInboxUseCase = ObserveInboxUseCase(androidDataLayer.inboxRepository)
@@ -55,5 +62,5 @@ class AndroidAppContainer {
 }
 
 class YepAnywhereAndroidApplication : Application() {
-    val appContainer: AndroidAppContainer by lazy { AndroidAppContainer() }
+    val appContainer: AndroidAppContainer by lazy { AndroidAppContainer(this) }
 }
