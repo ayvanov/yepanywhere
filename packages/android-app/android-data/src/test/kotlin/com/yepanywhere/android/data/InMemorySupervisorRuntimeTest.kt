@@ -1,5 +1,6 @@
 package com.yepanywhere.android.data
 
+import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.model.SupervisorPushPayload
 import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.repository.RelayPushPayloadSource
@@ -18,6 +19,48 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class InMemorySupervisorRuntimeTest {
+    @Test
+    fun loginPersistsStoredSecureRelaySession() = runTest(UnconfinedTestDispatcher()) {
+        val runtime = InMemorySupervisorRuntime(
+            scope = backgroundScope,
+        )
+
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        assertEquals(
+            StoredRelaySession(
+                wsUrl = "wss://relay.yepanywhere.local",
+                username = "demo@yepanywhere",
+                sessionId = "relay-session-demo",
+                sessionKey = "demo-session-key",
+            ),
+            runtime.relayAuthRepository.restoreStoredSession(),
+        )
+    }
+
+    @Test
+    fun clearSessionDropsStoredSecureRelaySession() = runTest(UnconfinedTestDispatcher()) {
+        val runtime = InMemorySupervisorRuntime(
+            scope = backgroundScope,
+        )
+
+        runtime.relayAuthRepository.persistStoredSession(
+            StoredRelaySession(
+                wsUrl = "wss://relay.yepanywhere.local",
+                username = "demo@yepanywhere",
+                sessionId = "relay-session-demo",
+                sessionKey = "demo-session-key",
+            ),
+        )
+        runtime.relayAuthRepository.clearSession()
+
+        assertEquals(null, runtime.relayAuthRepository.restoreStoredSession())
+    }
+
     @Test
     fun approveRemovesPendingRequestAndClearsSessionAttention() = runTest(UnconfinedTestDispatcher()) {
         val runtime = InMemorySupervisorRuntime(

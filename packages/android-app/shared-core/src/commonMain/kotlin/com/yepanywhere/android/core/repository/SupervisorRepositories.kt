@@ -7,6 +7,7 @@ import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.model.SupervisorPushPayload
 import kotlinx.coroutines.flow.Flow
@@ -21,6 +22,10 @@ interface RelayAuthRepository {
         password: String,
         relayUrl: String,
     ): RelaySession
+
+    suspend fun persistStoredSession(session: StoredRelaySession)
+
+    suspend fun restoreStoredSession(): StoredRelaySession?
 
     suspend fun restoreSession(): RelaySession?
 

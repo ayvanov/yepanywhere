@@ -11,6 +11,7 @@ import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.model.SupervisorPushPayload
 import com.yepanywhere.android.core.model.SupervisorPushEventStreamAdapter
@@ -48,6 +49,7 @@ class InMemorySupervisorRuntime(
     val activeSessionId: String = initialTimeline.sessionId
     private val cache = InMemorySessionCacheStore(initialSnapshot)
     private val storedSession = MutableStateFlow<RelaySession?>(null)
+    private val storedSecureSession = MutableStateFlow<StoredRelaySession?>(null)
     private val connectionState = MutableStateFlow(initialSnapshot.connectionStatus)
     private val inboxInvalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private val localSupervisorPushPayloads = MutableSharedFlow<SupervisorPushPayload>(extraBufferCapacity = 64)
@@ -69,14 +71,27 @@ class InMemorySupervisorRuntime(
                 sessionId = "relay-session-demo",
             )
             storedSession.value = session
+            storedSecureSession.value = StoredRelaySession(
+                wsUrl = relayUrl,
+                username = username,
+                sessionId = session.sessionId ?: "relay-session-demo",
+                sessionKey = "demo-session-key",
+            )
             connectionState.value = RelayConnectionStatus.CONNECTED
             return session
         }
+
+        override suspend fun persistStoredSession(session: StoredRelaySession) {
+            storedSecureSession.value = session
+        }
+
+        override suspend fun restoreStoredSession(): StoredRelaySession? = storedSecureSession.value
 
         override suspend fun restoreSession(): RelaySession? = storedSession.value
 
         override suspend fun clearSession() {
             storedSession.value = null
+            storedSecureSession.value = null
             connectionState.value = RelayConnectionStatus.DISCONNECTED
         }
     }
