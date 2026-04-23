@@ -10,7 +10,31 @@ data class AndroidNotificationContent(
     val title: String,
     val body: String,
     val route: AndroidNotificationRoute,
-)
+) {
+    companion object {
+        fun fromPayload(
+            title: String?,
+            body: String?,
+            data: Map<String, String>,
+        ): AndroidNotificationContent? {
+            val route = AndroidNotificationRoute.fromData(data) ?: return null
+
+            return AndroidNotificationContent(
+                title = title.takeUnlessBlank() ?: "Yep Anywhere",
+                body = body.takeUnlessBlank() ?: "Open the app to review this update.",
+                route = route,
+            )
+        }
+
+        private fun String?.takeUnlessBlank(): String? {
+            return this?.takeIf { it.isNotBlank() }
+        }
+    }
+}
+
+fun interface AndroidRouteNotificationBuilder {
+    fun build(content: AndroidNotificationContent): Notification
+}
 
 class AndroidNotificationChannelRegistrar(
     private val context: Context,
@@ -40,8 +64,8 @@ class AndroidNotificationBuilder(
     private val context: Context,
     private val intentFactory: AndroidNotificationIntentFactory = AndroidNotificationIntentFactory(context),
     private val channelRegistrar: AndroidNotificationChannelRegistrar = AndroidNotificationChannelRegistrar(context),
-) {
-    fun build(content: AndroidNotificationContent): Notification {
+) : AndroidRouteNotificationBuilder {
+    override fun build(content: AndroidNotificationContent): Notification {
         val channelId = channelRegistrar.ensureDefaultChannel()
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(context, channelId)
