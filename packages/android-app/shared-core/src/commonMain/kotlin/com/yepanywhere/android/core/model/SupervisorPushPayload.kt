@@ -140,6 +140,7 @@ sealed interface SupervisorPushPayload {
         const val DEFAULT_TIMESTAMP: String = "1970-01-01T00:00:00Z"
 
         private val json = Json {
+            encodeDefaults = true
             ignoreUnknownKeys = true
         }
 
