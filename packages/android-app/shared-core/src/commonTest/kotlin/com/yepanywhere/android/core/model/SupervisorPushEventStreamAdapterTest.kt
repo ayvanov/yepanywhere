@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
 class SupervisorPushEventStreamAdapterTest {
     @Test
     fun convertsValidPayloadsIntoTypedEvents() = runTest(UnconfinedTestDispatcher()) {
-        val payloads = MutableSharedFlow<Map<String, String>>()
+        val payloads = MutableSharedFlow<SupervisorPushPayload>()
         val events = mutableListOf<SupervisorPushEvent>()
         val adapter = SupervisorPushEventStreamAdapter(payloads)
 
@@ -25,14 +25,14 @@ class SupervisorPushEventStreamAdapterTest {
         }
 
         payloads.emit(
-            mapOf(
-                "type" to "pending-input",
-                "sessionId" to "session-1",
-                "projectId" to "project-1",
-                "projectName" to "Yep Anywhere",
-                "inputType" to "tool-approval",
-                "summary" to "Run: Bash",
-                "requestId" to "request-1",
+            SupervisorPushPayload.PendingInput(
+                timestamp = "2026-04-23T10:15:30Z",
+                sessionId = "session-1",
+                projectId = "project-1",
+                projectName = "Yep Anywhere",
+                inputType = "tool-approval",
+                summary = "Run: Bash",
+                requestId = "request-1",
             ),
         )
         advanceUntilIdle()
@@ -54,7 +54,7 @@ class SupervisorPushEventStreamAdapterTest {
 
     @Test
     fun dropsInvalidPayloadsWithoutBreakingTheStream() = runTest(UnconfinedTestDispatcher()) {
-        val payloads = MutableSharedFlow<Map<String, String>>()
+        val payloads = MutableSharedFlow<SupervisorPushPayload>()
         val events = mutableListOf<SupervisorPushEvent>()
         val adapter = SupervisorPushEventStreamAdapter(payloads)
 
@@ -62,11 +62,17 @@ class SupervisorPushEventStreamAdapterTest {
             adapter.events().take(1).toList(events)
         }
 
-        payloads.emit(mapOf("type" to "dismiss"))
         payloads.emit(
-            mapOf(
-                "type" to "dismiss",
-                "sessionId" to "session-1",
+            SupervisorPushPayload.Test(
+                timestamp = "2026-04-23T10:15:30Z",
+                message = "Ignore me",
+                urgency = "silent",
+            ),
+        )
+        payloads.emit(
+            SupervisorPushPayload.Dismiss(
+                timestamp = "2026-04-23T10:15:30Z",
+                sessionId = "session-1",
             ),
         )
         advanceUntilIdle()

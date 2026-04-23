@@ -12,6 +12,7 @@ import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.model.SupervisorPushEvent
+import com.yepanywhere.android.core.model.SupervisorPushPayload
 import com.yepanywhere.android.core.model.SupervisorPushEventStreamAdapter
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.core.repository.ApprovalsRepository
@@ -40,7 +41,7 @@ class InMemorySupervisorRuntime(
     initialSnapshot: SupervisorShellSnapshot = defaultSupervisorShellSnapshot(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     supervisorPushPayloadSource: RelayPushPayloadSource = object : RelayPushPayloadSource {
-        override fun payloadStream(): Flow<Map<String, String>> = emptyFlow()
+        override fun payloadStream(): Flow<SupervisorPushPayload> = emptyFlow()
     },
 ) {
     private val initialTimeline = initialSnapshot.timeline
@@ -49,7 +50,7 @@ class InMemorySupervisorRuntime(
     private val storedSession = MutableStateFlow<RelaySession?>(null)
     private val connectionState = MutableStateFlow(initialSnapshot.connectionStatus)
     private val inboxInvalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    private val localSupervisorPushPayloads = MutableSharedFlow<Map<String, String>>(extraBufferCapacity = 64)
+    private val localSupervisorPushPayloads = MutableSharedFlow<SupervisorPushPayload>(extraBufferCapacity = 64)
     private val supervisorPushPayloads = merge(
         localSupervisorPushPayloads,
         supervisorPushPayloadSource.payloadStream(),
@@ -344,12 +345,17 @@ class InMemorySupervisorRuntime(
     }
 
     suspend fun emitSupervisorPushEvent(event: SupervisorPushEvent) {
-        localSupervisorPushPayloads.emit(event.toPayload())
+        val payload = event.toPushPayload() ?: return
+        localSupervisorPushPayloads.emit(payload)
+    }
+
+    suspend fun emitSupervisorPushPayload(payload: SupervisorPushPayload) {
+        localSupervisorPushPayloads.emit(payload)
     }
 
     suspend fun emitSupervisorPushPayload(payload: Map<String, String>): Boolean {
-        val event = SupervisorPushEvent.fromPayload(payload) ?: return false
-        localSupervisorPushPayloads.emit(event.toPayload())
+        val typedPayload = SupervisorPushPayload.fromFields(payload) ?: return false
+        localSupervisorPushPayloads.emit(typedPayload)
         return true
     }
 

@@ -1,5 +1,6 @@
 package com.yepanywhere.android.data
 
+import com.yepanywhere.android.core.model.SupervisorPushPayload
 import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.repository.RelayPushPayloadSource
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -114,14 +115,14 @@ class InMemorySupervisorRuntimeTest {
         val runtime = InMemorySupervisorRuntime(
             scope = backgroundScope,
         )
-        val payload = mapOf(
-            "type" to "pending-input",
-            "sessionId" to "session-stream",
-            "projectId" to "project-stream",
-            "projectName" to "Stream Project",
-            "inputType" to "user-question",
-            "summary" to "Stream question",
-            "requestId" to "request-stream",
+        val payload = SupervisorPushPayload.PendingInput(
+            timestamp = "2026-04-23T10:15:30Z",
+            sessionId = "session-stream",
+            projectId = "project-stream",
+            projectName = "Stream Project",
+            inputType = "user-question",
+            summary = "Stream question",
+            requestId = "request-stream",
         )
         val event = SupervisorPushEvent.PendingInput(
             sessionId = "session-stream",
@@ -136,7 +137,7 @@ class InMemorySupervisorRuntimeTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             runtime.relayConnectionClient.supervisorPushEventStream().take(1).toList(events)
         }
-        assertTrue(runtime.emitSupervisorPushPayload(payload))
+        runtime.emitSupervisorPushPayload(payload)
         advanceUntilIdle()
 
         assertEquals(listOf<SupervisorPushEvent>(event), events)
@@ -153,7 +154,13 @@ class InMemorySupervisorRuntimeTest {
             runtime.relayConnectionClient.supervisorPushEventStream().take(1).toList(events)
         }
 
-        assertFalse(runtime.emitSupervisorPushPayload(mapOf("type" to "dismiss")))
+        runtime.emitSupervisorPushPayload(
+            SupervisorPushPayload.Test(
+                timestamp = "2026-04-23T10:15:30Z",
+                message = "Ignore me",
+                urgency = "silent",
+            ),
+        )
         advanceUntilIdle()
 
         assertTrue(events.isEmpty())
@@ -161,7 +168,7 @@ class InMemorySupervisorRuntimeTest {
 
     @Test
     fun externalRelayPushPayloadSourceFeedsTypedRelayEventStream() = runTest(UnconfinedTestDispatcher()) {
-        val payloads = MutableSharedFlow<Map<String, String>>()
+        val payloads = MutableSharedFlow<SupervisorPushPayload>()
         val runtime = InMemorySupervisorRuntime(
             scope = backgroundScope,
             supervisorPushPayloadSource = object : RelayPushPayloadSource {
@@ -174,9 +181,9 @@ class InMemorySupervisorRuntimeTest {
             runtime.relayConnectionClient.supervisorPushEventStream().take(1).toList(events)
         }
         payloads.emit(
-            mapOf(
-                "type" to "dismiss",
-                "sessionId" to "session-external",
+            SupervisorPushPayload.Dismiss(
+                timestamp = "2026-04-23T10:15:30Z",
+                sessionId = "session-external",
             ),
         )
         advanceUntilIdle()

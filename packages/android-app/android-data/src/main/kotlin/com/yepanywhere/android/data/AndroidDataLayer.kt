@@ -2,6 +2,7 @@ package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.core.model.SupervisorPushEvent
+import com.yepanywhere.android.core.model.SupervisorPushPayload
 import com.yepanywhere.android.core.repository.ApprovalsRepository
 import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
@@ -65,6 +66,10 @@ class AndroidDataLayer(
 
     suspend fun emitSupervisorPushEvent(event: SupervisorPushEvent) {
         runtime.emitSupervisorPushEvent(event)
+    }
+
+    suspend fun emitSupervisorPushPayload(payload: SupervisorPushPayload) {
+        runtime.emitSupervisorPushPayload(payload)
     }
 
     suspend fun emitSupervisorPushPayload(payload: Map<String, String>): Boolean {

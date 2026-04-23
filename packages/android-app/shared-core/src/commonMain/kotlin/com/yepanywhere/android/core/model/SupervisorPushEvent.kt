@@ -4,32 +4,13 @@ sealed interface SupervisorPushEvent {
     val type: String
 
     fun toPayload(): Map<String, String> {
-        return when (this) {
-            is PendingInput -> buildMap {
-                put("type", type)
-                put("sessionId", sessionId)
-                put("projectId", projectId)
-                put("projectName", projectName)
-                put("inputType", inputType)
-                put("summary", summary)
-                requestId?.let { put("requestId", it) }
-            }
+        return toPushPayload()?.toFields() ?: mapOf("type" to type)
+    }
 
-            is SessionHalted -> buildMap {
-                put("type", type)
-                put("sessionId", sessionId)
-                put("projectId", projectId)
-                put("projectName", projectName)
-                reason?.let { put("reason", it) }
-            }
-
-            is Dismiss -> mapOf(
-                "type" to type,
-                "sessionId" to sessionId,
-            )
-
-            is Unknown -> mapOf("type" to type)
-        }
+    fun toPushPayload(
+        timestamp: String = SupervisorPushPayload.DEFAULT_TIMESTAMP,
+    ): SupervisorPushPayload? {
+        return SupervisorPushPayload.fromEvent(this, timestamp)
     }
 
     data class PendingInput(
@@ -76,38 +57,11 @@ sealed interface SupervisorPushEvent {
 
     companion object {
         fun fromPayload(payload: Map<String, String>): SupervisorPushEvent? {
-            return when (payload["type"]) {
-                PendingInput.TYPE -> {
-                    val sessionId = payload["sessionId"] ?: return null
-                    val projectId = payload["projectId"] ?: return null
-                    PendingInput(
-                        sessionId = sessionId,
-                        projectId = projectId,
-                        projectName = payload["projectName"] ?: "Yep Anywhere",
-                        inputType = payload["inputType"] ?: "user-question",
-                        summary = payload["summary"] ?: "Waiting for input",
-                        requestId = payload["requestId"],
-                    )
-                }
+            return SupervisorPushPayload.fromFields(payload)?.toEvent()
+        }
 
-                SessionHalted.TYPE -> {
-                    val sessionId = payload["sessionId"] ?: return null
-                    val projectId = payload["projectId"] ?: return null
-                    SessionHalted(
-                        sessionId = sessionId,
-                        projectId = projectId,
-                        projectName = payload["projectName"] ?: "Yep Anywhere",
-                        reason = payload["reason"],
-                    )
-                }
-
-                Dismiss.TYPE -> {
-                    val sessionId = payload["sessionId"] ?: return null
-                    Dismiss(sessionId = sessionId)
-                }
-
-                else -> null
-            }
+        fun fromPayload(payload: SupervisorPushPayload): SupervisorPushEvent? {
+            return payload.toEvent()
         }
     }
 }

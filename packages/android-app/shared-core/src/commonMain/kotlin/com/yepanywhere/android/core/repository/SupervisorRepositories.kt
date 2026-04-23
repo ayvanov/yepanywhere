@@ -8,10 +8,11 @@ import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.model.SupervisorPushEvent
+import com.yepanywhere.android.core.model.SupervisorPushPayload
 import kotlinx.coroutines.flow.Flow
 
 interface RelayPushPayloadSource {
-    fun payloadStream(): Flow<Map<String, String>>
+    fun payloadStream(): Flow<SupervisorPushPayload>
 }
 
 interface RelayAuthRepository {
