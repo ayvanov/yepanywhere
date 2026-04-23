@@ -10,6 +10,10 @@ import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.model.SupervisorPushEvent
 import kotlinx.coroutines.flow.Flow
 
+interface RelayPushPayloadSource {
+    fun payloadStream(): Flow<Map<String, String>>
+}
+
 interface RelayAuthRepository {
     suspend fun login(
         username: String,

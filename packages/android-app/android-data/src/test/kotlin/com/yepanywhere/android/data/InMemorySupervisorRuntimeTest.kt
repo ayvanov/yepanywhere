@@ -1,7 +1,9 @@
 package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.SupervisorPushEvent
+import com.yepanywhere.android.core.repository.RelayPushPayloadSource
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -155,5 +157,33 @@ class InMemorySupervisorRuntimeTest {
         advanceUntilIdle()
 
         assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun externalRelayPushPayloadSourceFeedsTypedRelayEventStream() = runTest(UnconfinedTestDispatcher()) {
+        val payloads = MutableSharedFlow<Map<String, String>>()
+        val runtime = InMemorySupervisorRuntime(
+            scope = backgroundScope,
+            supervisorPushPayloadSource = object : RelayPushPayloadSource {
+                override fun payloadStream() = payloads
+            },
+        )
+        val events = mutableListOf<SupervisorPushEvent>()
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            runtime.relayConnectionClient.supervisorPushEventStream().take(1).toList(events)
+        }
+        payloads.emit(
+            mapOf(
+                "type" to "dismiss",
+                "sessionId" to "session-external",
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf<SupervisorPushEvent>(SupervisorPushEvent.Dismiss("session-external")),
+            events,
+        )
     }
 }

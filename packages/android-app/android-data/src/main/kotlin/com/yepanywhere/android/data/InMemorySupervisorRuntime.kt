@@ -19,6 +19,7 @@ import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
 import com.yepanywhere.android.core.repository.RelayAuthRepository
 import com.yepanywhere.android.core.repository.RelayConnectionClient
+import com.yepanywhere.android.core.repository.RelayPushPayloadSource
 import com.yepanywhere.android.core.repository.SessionsRepository
 import com.yepanywhere.android.core.usecase.ObserveSupervisorShellUseCase
 import kotlinx.coroutines.CoroutineScope
@@ -28,14 +29,19 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 
 class InMemorySupervisorRuntime(
     initialSnapshot: SupervisorShellSnapshot = defaultSupervisorShellSnapshot(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    supervisorPushPayloadSource: RelayPushPayloadSource = object : RelayPushPayloadSource {
+        override fun payloadStream(): Flow<Map<String, String>> = emptyFlow()
+    },
 ) {
     private val initialTimeline = initialSnapshot.timeline
     val activeSessionId: String = initialTimeline.sessionId
@@ -43,7 +49,11 @@ class InMemorySupervisorRuntime(
     private val storedSession = MutableStateFlow<RelaySession?>(null)
     private val connectionState = MutableStateFlow(initialSnapshot.connectionStatus)
     private val inboxInvalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    private val supervisorPushPayloads = MutableSharedFlow<Map<String, String>>(extraBufferCapacity = 64)
+    private val localSupervisorPushPayloads = MutableSharedFlow<Map<String, String>>(extraBufferCapacity = 64)
+    private val supervisorPushPayloads = merge(
+        localSupervisorPushPayloads,
+        supervisorPushPayloadSource.payloadStream(),
+    )
     private val supervisorPushEvents = SupervisorPushEventStreamAdapter(supervisorPushPayloads).events()
 
     val relayAuthRepository: RelayAuthRepository = object : RelayAuthRepository {
@@ -334,12 +344,12 @@ class InMemorySupervisorRuntime(
     }
 
     suspend fun emitSupervisorPushEvent(event: SupervisorPushEvent) {
-        supervisorPushPayloads.emit(event.toPayload())
+        localSupervisorPushPayloads.emit(event.toPayload())
     }
 
     suspend fun emitSupervisorPushPayload(payload: Map<String, String>): Boolean {
         val event = SupervisorPushEvent.fromPayload(payload) ?: return false
-        supervisorPushPayloads.emit(event.toPayload())
+        localSupervisorPushPayloads.emit(event.toPayload())
         return true
     }
 
