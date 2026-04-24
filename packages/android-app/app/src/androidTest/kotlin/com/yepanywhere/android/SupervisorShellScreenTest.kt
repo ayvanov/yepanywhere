@@ -313,6 +313,23 @@ class SupervisorShellScreenTest {
     }
 
     @Test
+    fun projectsSectionDispatchesProjectSelection() {
+        var selectedProjectId: String? = null
+
+        renderShell(
+            shellState = shellState(selectedSection = SupervisorShellSection.PROJECTS),
+            onProjectSelected = { selectedProjectId = it },
+        )
+
+        composeRule.onNodeWithText("Yep Anywhere")
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("project-1", selectedProjectId)
+        }
+    }
+
+    @Test
     fun sessionsSectionRendersUnreadIndicators() {
         renderShell(
             shellState = shellState(
@@ -375,6 +392,7 @@ class SupervisorShellScreenTest {
             onAnswerQuestion = { _, _ -> },
         ),
         onSectionSelected: (SupervisorShellSection) -> Unit = {},
+        onProjectSelected: (String) -> Unit = {},
         onLogout: () -> Unit = {},
     ) {
         composeRule.setContent {
@@ -386,6 +404,7 @@ class SupervisorShellScreenTest {
                 activeSessionState = activeSessionState,
                 activeSessionCallbacks = callbacks,
                 onSectionSelected = onSectionSelected,
+                onProjectSelected = onProjectSelected,
                 onLogout = onLogout,
             )
         }

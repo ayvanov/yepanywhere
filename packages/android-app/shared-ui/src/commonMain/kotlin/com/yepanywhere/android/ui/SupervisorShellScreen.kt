@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -55,6 +56,7 @@ data class SupervisorShellScreenState(
     val subtitle: String,
     val snapshot: SupervisorShellSnapshot,
     val selectedSection: SupervisorShellSection,
+    val selectedProjectId: String? = null,
 )
 
 data class ProjectsScreenState(
@@ -98,6 +100,7 @@ fun SupervisorShellScreen(
     activeSessionState: ActiveSessionScreenState,
     activeSessionCallbacks: ActiveSessionCallbacks,
     onSectionSelected: (SupervisorShellSection) -> Unit,
+    onProjectSelected: (String) -> Unit,
     onLogout: () -> Unit,
 ) {
     AndroidAppTheme {
@@ -147,10 +150,12 @@ fun SupervisorShellScreen(
                     SupervisorShellSection.PROJECTS -> ProjectsSection(
                         state = projectsState,
                         connectionStatus = state.snapshot.connectionStatus,
+                        onProjectSelected = onProjectSelected,
                     )
                     SupervisorShellSection.SESSIONS -> SessionsSection(
                         state = sessionsState,
                         connectionStatus = state.snapshot.connectionStatus,
+                        selectedProjectId = state.selectedProjectId,
                     )
                     SupervisorShellSection.INBOX -> InboxSection(
                         state = inboxState,
@@ -260,6 +265,7 @@ private fun SummaryChip(
 private fun ProjectsSection(
     state: ProjectsScreenState,
     connectionStatus: RelayConnectionStatus,
+    onProjectSelected: (String) -> Unit,
 ) {
     val emptyState = listSectionEmptyState(
         connectionStatus = connectionStatus,
@@ -274,6 +280,7 @@ private fun ProjectsSection(
         ListCard(
             title = project.name,
             subtitle = if (project.isActive) "Active relay workspace" else "Available workspace",
+            onClick = { onProjectSelected(project.id) },
         )
     }
 }
@@ -282,15 +289,21 @@ private fun ProjectsSection(
 private fun SessionsSection(
     state: SessionsScreenState,
     connectionStatus: RelayConnectionStatus,
+    selectedProjectId: String?,
 ) {
     val emptyState = listSectionEmptyState(
         connectionStatus = connectionStatus,
         singularName = "session",
     )
+    val sessions = if (selectedProjectId == null) {
+        state.sessions
+    } else {
+        state.sessions.filter { session -> session.projectId == selectedProjectId }
+    }
     SectionList(
         title = state.title,
         subtitle = state.subtitle,
-        items = state.sessions,
+        items = sessions,
         emptyState = emptyState,
     ) { session ->
         ListCard(
@@ -747,8 +760,9 @@ private fun ListCard(
     title: String,
     subtitle: String,
     trailing: String? = null,
+    onClick: (() -> Unit)? = null,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val content: @Composable () -> Unit = {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -790,6 +804,19 @@ private fun ListCard(
                     )
                 }
             }
+        }
+    }
+    if (onClick == null) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            content()
+        }
+    } else {
+        Card(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(),
+        ) {
+            content()
         }
     }
 }

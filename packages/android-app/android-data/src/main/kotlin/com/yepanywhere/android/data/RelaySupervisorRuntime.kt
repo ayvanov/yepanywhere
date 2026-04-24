@@ -512,6 +512,9 @@ class RelaySupervisorRuntime(
             )
             payload["sessions"].asJsonArray().forEach { element ->
                 val session = element as? JsonObject ?: return@forEach
+                if (session["isArchived"].asBoolean() == true) {
+                    return@forEach
+                }
                 val sessionId = session["id"].asString() ?: return@forEach
                 val title = session["customTitle"].asString()
                     ?: session["title"].asString()

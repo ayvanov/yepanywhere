@@ -32,7 +32,7 @@ class SupervisorShellViewModelTest {
 
         assertEquals("Yep Anywhere Android", viewModel.uiState.value.title)
         assertEquals(source.summary, viewModel.uiState.value.subtitle)
-        assertEquals(SupervisorShellSection.ACTIVE, viewModel.uiState.value.selectedSection)
+        assertEquals(SupervisorShellSection.PROJECTS, viewModel.uiState.value.selectedSection)
         assertEquals(source.shellState.value, viewModel.uiState.value.snapshot)
 
         source.shellState.value = source.shellState.value.copy(
@@ -44,6 +44,29 @@ class SupervisorShellViewModelTest {
 
         assertEquals(SupervisorShellSection.INBOX, viewModel.uiState.value.selectedSection)
         assertEquals(0, viewModel.uiState.value.snapshot.pendingRequests.size)
+
+        collectionJob.cancel()
+        externalScope.cancel()
+    }
+
+    @Test
+    fun selectingProjectOpensSessionsFilteredToThatProject() = runTest {
+        val source = FakeSupervisorShellDataSource()
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = SupervisorShellViewModel(
+            dataSource = source,
+            scope = externalScope,
+        )
+        val collectionJob = externalScope.launch {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.selectProject("project-yepanywhere")
+
+        advanceUntilIdle()
+
+        assertEquals(SupervisorShellSection.SESSIONS, viewModel.uiState.value.selectedSection)
+        assertEquals("project-yepanywhere", viewModel.uiState.value.selectedProjectId)
 
         collectionJob.cancel()
         externalScope.cancel()

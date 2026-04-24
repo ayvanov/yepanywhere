@@ -129,6 +129,7 @@ class RelaySupervisorRuntimeTest {
         assertEquals("project-1", snapshot.projects.first().id)
         assertEquals(1, snapshot.sessions.size)
         assertEquals("session-1", snapshot.sessions.first().id)
+        assertTrue(snapshot.sessions.none { it.id == "archived-session" })
         assertEquals(1, snapshot.inboxItems.size)
         assertEquals(InboxItemKind.APPROVAL, snapshot.inboxItems.first().kind)
         assertTrue(snapshot.timeline.messages.any { it.body.contains("real backend message") })
@@ -241,6 +242,14 @@ class RelaySupervisorRuntimeTest {
                                 "updatedAt" to JsonPrimitive("2026-04-23T12:00:00Z"),
                                 "pendingInputType" to JsonPrimitive("tool-approval"),
                                 "hasUnread" to JsonPrimitive(true),
+                            ),
+                            jsonObject(
+                                "id" to JsonPrimitive("archived-session"),
+                                "projectId" to JsonPrimitive("project-1"),
+                                "title" to JsonPrimitive("Archived Android supervisor"),
+                                "updatedAt" to JsonPrimitive("2026-04-23T11:00:00Z"),
+                                "isArchived" to JsonPrimitive(true),
+                                "hasUnread" to JsonPrimitive(false),
                             ),
                         ),
                     ),

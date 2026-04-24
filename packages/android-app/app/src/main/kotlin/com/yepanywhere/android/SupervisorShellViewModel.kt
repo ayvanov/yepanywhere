@@ -18,17 +18,20 @@ class SupervisorShellViewModel(
     scope: CoroutineScope? = null,
 ) : ViewModel() {
     private val coroutineScope = scope ?: viewModelScope
-    private val selectedSection = MutableStateFlow(SupervisorShellSection.ACTIVE)
+    private val selectedSection = MutableStateFlow(SupervisorShellSection.PROJECTS)
+    private val selectedProjectId = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<SupervisorShellScreenState> = combine(
         dataSource.shellState,
         selectedSection,
-    ) { snapshot, section ->
+        selectedProjectId,
+    ) { snapshot, section, projectId ->
         SupervisorShellScreenState(
             title = "Yep Anywhere Android",
             subtitle = dataSource.summary,
             snapshot = snapshot,
             selectedSection = section,
+            selectedProjectId = projectId,
         )
     }.stateIn(
         scope = coroutineScope,
@@ -37,12 +40,17 @@ class SupervisorShellViewModel(
             title = "Yep Anywhere Android",
             subtitle = dataSource.summary,
             snapshot = dataSource.shellState.value,
-            selectedSection = SupervisorShellSection.ACTIVE,
+            selectedSection = SupervisorShellSection.PROJECTS,
         ),
     )
 
     fun selectSection(section: SupervisorShellSection) {
         selectedSection.value = section
+    }
+
+    fun selectProject(projectId: String) {
+        selectedProjectId.value = projectId
+        selectedSection.value = SupervisorShellSection.SESSIONS
     }
 
     fun applyNotificationRoute(route: AndroidNotificationRoute) {
