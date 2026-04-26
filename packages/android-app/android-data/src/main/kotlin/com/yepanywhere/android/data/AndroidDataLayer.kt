@@ -95,6 +95,12 @@ class AndroidDataLayer(
             true
         } catch (_: Throwable) {
             runtime.relayAuthRepository.clearSession()
+            relayAuthStateStore.write(
+                PersistedRelayAuthState(
+                    credentials = persistedState.credentials,
+                    storedSession = null,
+                ),
+            )
             false
         }
     }

@@ -238,6 +238,45 @@ class AndroidDataLayerTest {
     }
 
     @Test
+    fun reconnectClearsBrokenStoredSessionAndKeepsCredentialsForFullAuthFallback() = runTest {
+        val credentials = RelayCredentials(
+            relayUrl = "relay.yepanywhere.com",
+            username = "home-pc",
+            password = "",
+        )
+        val stateStore = InMemoryRelayAuthStateStore(
+            PersistedRelayAuthState(
+                credentials = credentials,
+                storedSession = StoredRelaySession(
+                    wsUrl = "relay.yepanywhere.com",
+                    username = "home-pc",
+                    sessionId = "broken-session",
+                    sessionKey = "broken-session-key",
+                ),
+            ),
+        )
+        val dataLayer = AndroidDataLayer(
+            relayAuthStateStore = stateStore,
+            relayRealtimeGatewayOverride = FakeRelayRealtimeGateway(),
+            relayAuthHandshake = { _, _, _, storedSession ->
+                assertEquals("broken-session", storedSession?.sessionId)
+                error("resume failed")
+            },
+        )
+
+        val reconnected = dataLayer.reconnectPersistedSession()
+
+        assertFalse(reconnected)
+        assertEquals(
+            PersistedRelayAuthState(
+                credentials = credentials,
+                storedSession = null,
+            ),
+            stateStore.read(),
+        )
+    }
+
+    @Test
     fun loginPersistsCredentialsAndReconnectsWithStoredSession() = runTest(UnconfinedTestDispatcher()) {
         var callCount = 0
         var reconnectStoredSession: StoredRelaySession? = null
