@@ -56,6 +56,15 @@ class AndroidNotificationRouteResyncOrchestrator(
                 inboxRepository.refreshInbox()
                 sessionStream(targetSessionId).first()
             }
+
+            SupervisorShellSection.AGENTS,
+            SupervisorShellSection.SETTINGS,
+            SupervisorShellSection.NEW_SESSION,
+            SupervisorShellSection.FILE,
+            SupervisorShellSection.GIT_STATUS,
+            SupervisorShellSection.DEVICES,
+            SupervisorShellSection.ACTIVITY,
+            -> Unit
         }
         return true
     }

@@ -20,18 +20,27 @@ class SupervisorShellViewModel(
     private val coroutineScope = scope ?: viewModelScope
     private val selectedSection = MutableStateFlow(SupervisorShellSection.PROJECTS)
     private val selectedProjectId = MutableStateFlow<String?>(null)
+    private val selectedSessionId = MutableStateFlow<String?>(null)
+    private val selectedFilePath = MutableStateFlow<String?>(null)
+    private val selectedDeviceId = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<SupervisorShellScreenState> = combine(
-        dataSource.shellState,
-        selectedSection,
-        selectedProjectId,
-    ) { snapshot, section, projectId ->
+        combine(dataSource.shellState, selectedSection, selectedProjectId) { snapshot, section, projectId ->
+            Triple(snapshot, section, projectId)
+        },
+        selectedSessionId,
+        selectedFilePath,
+        selectedDeviceId,
+    ) { (snapshot, section, projectId), sessionId, filePath, deviceId ->
         SupervisorShellScreenState(
             title = "Yep Anywhere Android",
             subtitle = dataSource.summary,
             snapshot = snapshot,
             selectedSection = section,
             selectedProjectId = projectId,
+            selectedSessionId = sessionId,
+            selectedFilePath = filePath,
+            selectedDeviceId = deviceId,
         )
     }.stateIn(
         scope = coroutineScope,
@@ -50,10 +59,25 @@ class SupervisorShellViewModel(
 
     fun selectProject(projectId: String) {
         selectedProjectId.value = projectId
+        selectedSessionId.value = null
+        selectedFilePath.value = null
+        selectedDeviceId.value = null
         selectedSection.value = SupervisorShellSection.SESSIONS
     }
 
+    fun selectSession(projectId: String, sessionId: String) {
+        selectedProjectId.value = projectId
+        selectedSessionId.value = sessionId
+        selectedFilePath.value = null
+        selectedDeviceId.value = null
+        selectedSection.value = SupervisorShellSection.ACTIVE
+    }
+
     fun applyNotificationRoute(route: AndroidNotificationRoute) {
+        selectedProjectId.value = route.projectId
+        selectedSessionId.value = route.sessionId
+        selectedFilePath.value = route.filePath
+        selectedDeviceId.value = route.deviceId
         selectSection(route.section)
     }
 

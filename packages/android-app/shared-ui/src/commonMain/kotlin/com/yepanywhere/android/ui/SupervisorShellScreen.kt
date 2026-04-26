@@ -47,8 +47,20 @@ enum class SupervisorShellSection(
 ) {
     PROJECTS("Projects"),
     SESSIONS("Sessions"),
+    AGENTS("Agents"),
     INBOX("Inbox"),
-    ACTIVE("Active"),
+    SETTINGS("Settings"),
+    ACTIVE("Session"),
+    NEW_SESSION("New"),
+    FILE("File"),
+    GIT_STATUS("Git"),
+    DEVICES("Devices"),
+    ACTIVITY("Activity"),
+    ;
+
+    companion object {
+        val topLevelEntries = listOf(PROJECTS, SESSIONS, AGENTS, INBOX, SETTINGS)
+    }
 }
 
 data class SupervisorShellScreenState(
@@ -57,6 +69,9 @@ data class SupervisorShellScreenState(
     val snapshot: SupervisorShellSnapshot,
     val selectedSection: SupervisorShellSection,
     val selectedProjectId: String? = null,
+    val selectedSessionId: String? = null,
+    val selectedFilePath: String? = null,
+    val selectedDeviceId: String? = null,
 )
 
 data class ProjectsScreenState(
@@ -101,6 +116,7 @@ fun SupervisorShellScreen(
     activeSessionCallbacks: ActiveSessionCallbacks,
     onSectionSelected: (SupervisorShellSection) -> Unit,
     onProjectSelected: (String) -> Unit,
+    onSessionSelected: (projectId: String, sessionId: String) -> Unit = { _, _ -> },
     onLogout: () -> Unit,
 ) {
     AndroidAppTheme {
@@ -108,7 +124,7 @@ fun SupervisorShellScreen(
             modifier = Modifier.fillMaxSize(),
             bottomBar = {
                 NavigationBar {
-                    SupervisorShellSection.entries.forEach { section ->
+                    SupervisorShellSection.topLevelEntries.forEach { section ->
                         NavigationBarItem(
                             selected = state.selectedSection == section,
                             onClick = { onSectionSelected(section) },
@@ -117,8 +133,10 @@ fun SupervisorShellScreen(
                                     text = when (section) {
                                         SupervisorShellSection.PROJECTS -> "${state.snapshot.projects.size}"
                                         SupervisorShellSection.SESSIONS -> "${state.snapshot.sessions.size}"
+                                        SupervisorShellSection.AGENTS -> "0"
                                         SupervisorShellSection.INBOX -> "${state.snapshot.unreadInboxCount}"
-                                        SupervisorShellSection.ACTIVE -> "${state.snapshot.pendingRequests.size}"
+                                        SupervisorShellSection.SETTINGS -> "0"
+                                        else -> "0"
                                     },
                                     style = MaterialTheme.typography.labelMedium,
                                 )
@@ -160,14 +178,43 @@ fun SupervisorShellScreen(
                         selectedProjectId = state.selectedProjectId,
                         projects = projectsState.projects,
                         onProjectSelected = onProjectSelected,
+                        onSessionSelected = onSessionSelected,
+                    )
+                    SupervisorShellSection.AGENTS -> PlaceholderSection(
+                        title = "Agents",
+                        subtitle = "Global active agents and subagent drill-down will land here.",
                     )
                     SupervisorShellSection.INBOX -> InboxSection(
                         state = inboxState,
                         connectionStatus = state.snapshot.connectionStatus,
                     )
+                    SupervisorShellSection.SETTINGS -> PlaceholderSection(
+                        title = "Settings",
+                        subtitle = "Android settings categories will mirror the web settings surface.",
+                    )
                     SupervisorShellSection.ACTIVE -> ActiveSessionSection(
                         state = activeSessionState,
                         callbacks = activeSessionCallbacks,
+                    )
+                    SupervisorShellSection.NEW_SESSION -> PlaceholderSection(
+                        title = "New session",
+                        subtitle = "Project, provider, model, permission, executor, and prompt controls.",
+                    )
+                    SupervisorShellSection.FILE -> PlaceholderSection(
+                        title = state.selectedFilePath ?: "File",
+                        subtitle = "File content and syntax highlighting route.",
+                    )
+                    SupervisorShellSection.GIT_STATUS -> PlaceholderSection(
+                        title = "Git status",
+                        subtitle = "Changed files and diff viewer route.",
+                    )
+                    SupervisorShellSection.DEVICES -> PlaceholderSection(
+                        title = "Devices",
+                        subtitle = state.selectedDeviceId ?: "Device and emulator bridge route.",
+                    )
+                    SupervisorShellSection.ACTIVITY -> PlaceholderSection(
+                        title = "Activity",
+                        subtitle = "Recent sessions and cross-project activity route.",
                     )
                 }
             }
@@ -296,6 +343,7 @@ private fun SessionsSection(
     selectedProjectId: String?,
     projects: List<ProjectSummary>,
     onProjectSelected: (String) -> Unit,
+    onSessionSelected: (projectId: String, sessionId: String) -> Unit,
 ) {
     val emptyState = listSectionEmptyState(
         connectionStatus = connectionStatus,
@@ -322,9 +370,26 @@ private fun SessionsSection(
                 title = session.title,
                 subtitle = "${session.status.name.lowercase().replaceFirstChar(Char::titlecase)} • ${session.updatedLabel}",
                 trailing = if (session.hasUnread) "Unread" else null,
+                onClick = { onSessionSelected(session.projectId, session.id) },
             )
         }
     }
+}
+
+@Composable
+private fun PlaceholderSection(
+    title: String,
+    subtitle: String,
+) {
+    SectionList(
+        title = title,
+        subtitle = subtitle,
+        items = emptyList<Unit>(),
+        emptyState = SectionEmptyState(
+            title = "$title route",
+            body = subtitle,
+        ),
+    ) {}
 }
 
 @Composable

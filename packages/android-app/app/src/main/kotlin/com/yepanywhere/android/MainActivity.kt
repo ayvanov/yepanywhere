@@ -152,6 +152,7 @@ private fun YepAnywhereAndroidApp(
             activeSessionCallbacks = activeSessionCallbacks,
             onSectionSelected = shellViewModel::selectSection,
             onProjectSelected = shellViewModel::selectProject,
+            onSessionSelected = shellViewModel::selectSession,
             onLogout = relayLoginViewModel::logout,
         )
     } else {

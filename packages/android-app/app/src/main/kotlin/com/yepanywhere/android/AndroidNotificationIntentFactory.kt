@@ -62,8 +62,15 @@ class AndroidNotificationIntentFactory(
         return when (this) {
             SupervisorShellSection.PROJECTS -> "projects"
             SupervisorShellSection.SESSIONS -> "sessions"
+            SupervisorShellSection.AGENTS -> "agents"
             SupervisorShellSection.INBOX -> "inbox"
+            SupervisorShellSection.SETTINGS -> "settings"
             SupervisorShellSection.ACTIVE -> "session"
+            SupervisorShellSection.NEW_SESSION -> "new-session"
+            SupervisorShellSection.FILE -> "file"
+            SupervisorShellSection.GIT_STATUS -> "git"
+            SupervisorShellSection.DEVICES -> "devices"
+            SupervisorShellSection.ACTIVITY -> "activity"
         }
     }
 }

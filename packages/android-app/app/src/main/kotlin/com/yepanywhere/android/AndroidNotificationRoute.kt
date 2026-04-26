@@ -9,12 +9,16 @@ data class AndroidNotificationRoute(
     val projectId: String? = null,
     val sessionId: String? = null,
     val inboxItemId: String? = null,
+    val filePath: String? = null,
+    val deviceId: String? = null,
 ) {
     companion object {
         const val EXTRA_TARGET = "com.yepanywhere.android.extra.TARGET"
         const val EXTRA_PROJECT_ID = "com.yepanywhere.android.extra.PROJECT_ID"
         const val EXTRA_SESSION_ID = "com.yepanywhere.android.extra.SESSION_ID"
         const val EXTRA_INBOX_ITEM_ID = "com.yepanywhere.android.extra.INBOX_ITEM_ID"
+        const val EXTRA_FILE_PATH = "com.yepanywhere.android.extra.FILE_PATH"
+        const val EXTRA_DEVICE_ID = "com.yepanywhere.android.extra.DEVICE_ID"
 
         fun fromIntent(intent: Intent?): AndroidNotificationRoute? {
             if (intent == null) {
@@ -26,6 +30,8 @@ data class AndroidNotificationRoute(
                 projectId = intent.getStringExtra(EXTRA_PROJECT_ID),
                 sessionId = intent.getStringExtra(EXTRA_SESSION_ID),
                 inboxItemId = intent.getStringExtra(EXTRA_INBOX_ITEM_ID),
+                filePath = intent.getStringExtra(EXTRA_FILE_PATH),
+                deviceId = intent.getStringExtra(EXTRA_DEVICE_ID),
             )
 
             return routeFromExtras ?: fromDeepLink(intent.dataString)
@@ -36,6 +42,8 @@ data class AndroidNotificationRoute(
             projectId: String? = null,
             sessionId: String? = null,
             inboxItemId: String? = null,
+            filePath: String? = null,
+            deviceId: String? = null,
         ): AndroidNotificationRoute? {
             val section = target?.let(::sectionForTarget)
                 ?: sectionForMetadata(
@@ -50,6 +58,8 @@ data class AndroidNotificationRoute(
                 projectId = projectId,
                 sessionId = sessionId,
                 inboxItemId = inboxItemId,
+                filePath = filePath,
+                deviceId = deviceId,
             )
         }
 
@@ -59,6 +69,8 @@ data class AndroidNotificationRoute(
                 projectId = data["projectId"],
                 sessionId = data["sessionId"],
                 inboxItemId = data["inboxItemId"] ?: data["itemId"],
+                filePath = data["filePath"] ?: data["path"],
+                deviceId = data["deviceId"],
             )
         }
 
@@ -83,12 +95,16 @@ data class AndroidNotificationRoute(
             val target = pathSegments.firstOrNull()
             val params = parseQuery(uri.rawQuery)
             val sessionId = params["sessionId"] ?: target.takeIf { it == "session" }?.let { pathSegments.getOrNull(1) }
+            val filePath = params["filePath"] ?: params["path"] ?: target.takeIf { it == "file" }?.let { pathSegments.getOrNull(1) }
+            val deviceId = params["deviceId"] ?: target.takeIf { it == "devices" || it == "device" }?.let { pathSegments.getOrNull(1) }
 
             return fromPayload(
                 target = target,
                 projectId = params["projectId"],
                 sessionId = sessionId,
                 inboxItemId = params["inboxItemId"] ?: params["itemId"],
+                filePath = filePath,
+                deviceId = deviceId,
             )
         }
 
@@ -96,8 +112,15 @@ data class AndroidNotificationRoute(
             return when (target.lowercase()) {
                 "project", "projects" -> SupervisorShellSection.PROJECTS
                 "sessions" -> SupervisorShellSection.SESSIONS
+                "agents" -> SupervisorShellSection.AGENTS
                 "session", "active" -> SupervisorShellSection.ACTIVE
                 "inbox", "approval", "question" -> SupervisorShellSection.INBOX
+                "settings" -> SupervisorShellSection.SETTINGS
+                "new", "new-session" -> SupervisorShellSection.NEW_SESSION
+                "file" -> SupervisorShellSection.FILE
+                "git", "git-status" -> SupervisorShellSection.GIT_STATUS
+                "device", "devices", "emulator", "emulators" -> SupervisorShellSection.DEVICES
+                "activity" -> SupervisorShellSection.ACTIVITY
                 else -> null
             }
         }

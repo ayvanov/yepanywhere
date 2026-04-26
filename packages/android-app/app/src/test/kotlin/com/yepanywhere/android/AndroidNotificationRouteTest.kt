@@ -24,6 +24,14 @@ class AndroidNotificationRouteTest {
             SupervisorShellSection.PROJECTS,
             AndroidNotificationRoute.fromPayload(target = "projects")?.section,
         )
+        assertEquals(
+            SupervisorShellSection.SETTINGS,
+            AndroidNotificationRoute.fromPayload(target = "settings")?.section,
+        )
+        assertEquals(
+            SupervisorShellSection.AGENTS,
+            AndroidNotificationRoute.fromPayload(target = "agents")?.section,
+        )
     }
 
     @Test
@@ -74,6 +82,18 @@ class AndroidNotificationRouteTest {
             SupervisorShellSection.ACTIVE,
             AndroidNotificationRoute.fromData(mapOf("sessionId" to "session-1"))?.section,
         )
+        assertEquals(
+            AndroidNotificationRoute(
+                section = SupervisorShellSection.DEVICES,
+                deviceId = "pixel-8",
+            ),
+            AndroidNotificationRoute.fromData(
+                mapOf(
+                    "target" to "devices",
+                    "deviceId" to "pixel-8",
+                ),
+            ),
+        )
     }
 
     @Test
@@ -95,11 +115,20 @@ class AndroidNotificationRouteTest {
             ),
             AndroidNotificationRoute.fromDeepLink("yepanywhere://open/session/session-1"),
         )
+        assertEquals(
+            AndroidNotificationRoute(
+                section = SupervisorShellSection.FILE,
+                projectId = "project-1",
+                filePath = "packages/client/src/api/client.ts",
+            ),
+            AndroidNotificationRoute.fromDeepLink(
+                "yepanywhere://open/file?projectId=project-1&path=packages/client/src/api/client.ts",
+            ),
+        )
     }
 
     @Test
     fun ignoresUnknownPayloadsAndLinks() {
-        assertNull(AndroidNotificationRoute.fromPayload(target = "settings"))
         assertNull(AndroidNotificationRoute.fromPayload(target = null))
         assertNull(AndroidNotificationRoute.fromDeepLink("https://example.com/session/session-1"))
         assertNull(AndroidNotificationRoute.fromDeepLink("yepanywhere://other/session/session-1"))

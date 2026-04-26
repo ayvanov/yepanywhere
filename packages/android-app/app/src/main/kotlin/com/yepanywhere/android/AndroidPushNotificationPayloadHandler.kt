@@ -88,7 +88,14 @@ private fun com.yepanywhere.android.ui.SupervisorShellSection.toTarget(): String
     return when (this) {
         com.yepanywhere.android.ui.SupervisorShellSection.PROJECTS -> "projects"
         com.yepanywhere.android.ui.SupervisorShellSection.SESSIONS -> "sessions"
+        com.yepanywhere.android.ui.SupervisorShellSection.AGENTS -> "agents"
         com.yepanywhere.android.ui.SupervisorShellSection.INBOX -> "inbox"
+        com.yepanywhere.android.ui.SupervisorShellSection.SETTINGS -> "settings"
         com.yepanywhere.android.ui.SupervisorShellSection.ACTIVE -> "session"
+        com.yepanywhere.android.ui.SupervisorShellSection.NEW_SESSION -> "new-session"
+        com.yepanywhere.android.ui.SupervisorShellSection.FILE -> "file"
+        com.yepanywhere.android.ui.SupervisorShellSection.GIT_STATUS -> "git"
+        com.yepanywhere.android.ui.SupervisorShellSection.DEVICES -> "devices"
+        com.yepanywhere.android.ui.SupervisorShellSection.ACTIVITY -> "activity"
     }
 }

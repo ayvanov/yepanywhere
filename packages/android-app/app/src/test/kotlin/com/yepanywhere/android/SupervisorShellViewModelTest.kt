@@ -73,6 +73,30 @@ class SupervisorShellViewModelTest {
     }
 
     @Test
+    fun selectingSessionOpensSessionDetailWithRouteArguments() = runTest {
+        val source = FakeSupervisorShellDataSource()
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = SupervisorShellViewModel(
+            dataSource = source,
+            scope = externalScope,
+        )
+        val collectionJob = externalScope.launch {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.selectSession(projectId = "project-yepanywhere", sessionId = "session-1")
+
+        advanceUntilIdle()
+
+        assertEquals(SupervisorShellSection.ACTIVE, viewModel.uiState.value.selectedSection)
+        assertEquals("project-yepanywhere", viewModel.uiState.value.selectedProjectId)
+        assertEquals("session-1", viewModel.uiState.value.selectedSessionId)
+
+        collectionJob.cancel()
+        externalScope.cancel()
+    }
+
+    @Test
     fun appliesNotificationRouteBySelectingTargetSection() = runTest {
         val source = FakeSupervisorShellDataSource()
         val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
@@ -99,9 +123,24 @@ class SupervisorShellViewModelTest {
         advanceUntilIdle()
 
         assertEquals(SupervisorShellSection.ACTIVE, viewModel.uiState.value.selectedSection)
+        assertEquals("session-1", viewModel.uiState.value.selectedSessionId)
 
         collectionJob.cancel()
         externalScope.cancel()
+    }
+
+    @Test
+    fun exposesExpandedTopLevelNavigationDestinations() {
+        assertEquals(
+            listOf(
+                SupervisorShellSection.PROJECTS,
+                SupervisorShellSection.SESSIONS,
+                SupervisorShellSection.AGENTS,
+                SupervisorShellSection.INBOX,
+                SupervisorShellSection.SETTINGS,
+            ),
+            SupervisorShellSection.topLevelEntries,
+        )
     }
 
     private class FakeSupervisorShellDataSource : SupervisorShellDataSource {
