@@ -7,7 +7,9 @@ import com.yepanywhere.android.core.model.NewSessionDefaults
 import com.yepanywhere.android.core.model.NewSessionOptions
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
+import com.yepanywhere.android.core.model.SessionAttachment
 import com.yepanywhere.android.core.model.SessionDetailQuery
+import com.yepanywhere.android.core.model.SessionInputRequest
 import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.usecase.SecureRelayAuthHandshakeResult
@@ -525,6 +527,75 @@ class RelaySupervisorRuntimeTest {
                     request.path == "/projects/project-1/sessions/session-detail/metadata"
             },
         )
+    }
+
+    @Test
+    fun sessionInputCommandsUseDeferredAttachmentHoldAndProcessEndpoints() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        runtime.sessionsRepository.queueSessionInput(
+            sessionId = "session-detail",
+            request = SessionInputRequest(
+                message = "queued from android",
+                mode = "acceptEdits",
+                thinking = "enabled",
+                attachments = listOf(
+                    SessionAttachment(
+                        id = "upload-1",
+                        name = "trace.log",
+                        sizeBytes = 1_024,
+                        mimeType = "text/plain",
+                    ),
+                ),
+                tempId = "android-1",
+                deferred = true,
+            ),
+        )
+        runtime.sessionsRepository.cancelDeferredMessage("session-detail", "android-1")
+        runtime.sessionsRepository.setSessionHold("session-detail", true)
+        val interrupted = runtime.sessionsRepository.interruptProcess("process-1")
+        val aborted = runtime.sessionsRepository.abortProcess("process-1")
+
+        assertEquals(
+            jsonObject(
+                "message" to JsonPrimitive("queued from android"),
+                "mode" to JsonPrimitive("acceptEdits"),
+                "thinking" to jsonObject("type" to JsonPrimitive("enabled")),
+                "tempId" to JsonPrimitive("android-1"),
+                "attachments" to JsonArray(
+                    listOf(
+                        jsonObject(
+                            "id" to JsonPrimitive("upload-1"),
+                            "originalName" to JsonPrimitive("trace.log"),
+                            "name" to JsonPrimitive("trace.log"),
+                            "path" to JsonPrimitive("upload-1"),
+                            "size" to JsonPrimitive(1_024L),
+                            "mimeType" to JsonPrimitive("text/plain"),
+                        ),
+                    ),
+                ),
+                "deferred" to JsonPrimitive(true),
+            ),
+            gateway.recordedRequest("POST", "/sessions/session-detail/messages").body,
+        )
+        assertEquals("DELETE", gateway.recordedRequest("DELETE", "/sessions/session-detail/deferred/android-1").method)
+        assertEquals(
+            jsonObject("hold" to JsonPrimitive(true)),
+            gateway.recordedRequest("PUT", "/sessions/session-detail/hold").body,
+        )
+        assertEquals(true, interrupted.success)
+        assertEquals(true, interrupted.supported)
+        assertEquals(true, aborted)
     }
 
     @Test
@@ -1050,9 +1121,20 @@ class RelaySupervisorRuntimeTest {
                     ),
                 )
 
-                "/sessions/session-1/input" -> jsonObject("accepted" to JsonPrimitive(true))
-                else -> JsonObject(emptyMap())
-            }
+            "/sessions/session-1/input" -> jsonObject("accepted" to JsonPrimitive(true))
+            "/sessions/session-detail/messages" -> jsonObject("queued" to JsonPrimitive(true))
+            "/sessions/session-detail/deferred/android-1" -> jsonObject("cancelled" to JsonPrimitive(true))
+            "/sessions/session-detail/hold" -> jsonObject(
+                "isHeld" to JsonPrimitive(true),
+                "state" to JsonPrimitive("held"),
+            )
+            "/processes/process-1/interrupt" -> jsonObject(
+                "interrupted" to JsonPrimitive(true),
+                "supported" to JsonPrimitive(true),
+            )
+            "/processes/process-1/abort" -> jsonObject("aborted" to JsonPrimitive(true))
+            else -> JsonObject(emptyMap())
+        }
         }
 
         override suspend fun subscribeSession(sessionId: String): String = "sub-session-$sessionId"

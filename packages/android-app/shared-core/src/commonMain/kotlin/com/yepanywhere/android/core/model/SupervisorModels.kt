@@ -255,6 +255,46 @@ data class SessionDetail(
     val pagination: SessionPaginationInfo? = null,
 )
 
+data class SessionAttachment(
+    val id: String,
+    val name: String,
+    val sizeBytes: Long = 0,
+    val mimeType: String? = null,
+    val url: String? = null,
+)
+
+data class SessionUploadProgress(
+    val fileId: String,
+    val fileName: String,
+    val bytesUploaded: Long,
+    val totalBytes: Long,
+) {
+    val percent: Int
+        get() = if (totalBytes <= 0) 0 else ((bytesUploaded * 100) / totalBytes).toInt().coerceIn(0, 100)
+}
+
+data class PendingSessionMessage(
+    val tempId: String,
+    val text: String,
+    val status: String? = null,
+    val deferred: Boolean = false,
+    val attachments: List<SessionAttachment> = emptyList(),
+)
+
+data class SessionInputRequest(
+    val message: String,
+    val mode: String? = null,
+    val thinking: String? = null,
+    val attachments: List<SessionAttachment> = emptyList(),
+    val tempId: String? = null,
+    val deferred: Boolean = false,
+)
+
+data class ProcessControlResult(
+    val success: Boolean,
+    val supported: Boolean = true,
+)
+
 data class PendingInputRequest(
     val id: String,
     val sessionId: String,

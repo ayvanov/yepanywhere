@@ -2,6 +2,7 @@ package com.yepanywhere.android.core.repository
 
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
+import com.yepanywhere.android.core.model.ProcessControlResult
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionsPage
 import com.yepanywhere.android.core.model.NewSessionDefaults
@@ -14,6 +15,7 @@ import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.SessionDetail
 import com.yepanywhere.android.core.model.SessionDetailQuery
+import com.yepanywhere.android.core.model.SessionInputRequest
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.model.StoredRelaySession
@@ -184,6 +186,42 @@ interface SessionsRepository {
         options: NewSessionOptions = NewSessionOptions(),
     ): Boolean {
         throw NotImplementedError("Session message queueing is not implemented by this repository")
+    }
+
+    suspend fun queueSessionInput(
+        sessionId: String,
+        request: SessionInputRequest,
+    ): Boolean {
+        return queueMessage(
+            sessionId = sessionId,
+            prompt = request.message,
+            options = NewSessionOptions(
+                permissionMode = request.mode,
+                thinking = request.thinking,
+            ),
+        )
+    }
+
+    suspend fun cancelDeferredMessage(
+        sessionId: String,
+        tempId: String,
+    ): Boolean {
+        throw NotImplementedError("Deferred message cancellation is not implemented by this repository")
+    }
+
+    suspend fun setSessionHold(
+        sessionId: String,
+        hold: Boolean,
+    ): Boolean {
+        throw NotImplementedError("Session hold is not implemented by this repository")
+    }
+
+    suspend fun interruptProcess(processId: String): ProcessControlResult {
+        throw NotImplementedError("Process interrupt is not implemented by this repository")
+    }
+
+    suspend fun abortProcess(processId: String): Boolean {
+        throw NotImplementedError("Process abort is not implemented by this repository")
     }
 }
 

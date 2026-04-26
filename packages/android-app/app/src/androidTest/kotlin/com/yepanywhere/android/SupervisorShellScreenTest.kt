@@ -19,13 +19,16 @@ import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.PendingInputRequest
+import com.yepanywhere.android.core.model.PendingSessionMessage
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
+import com.yepanywhere.android.core.model.SessionAttachment
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.model.SessionUploadProgress
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.ui.ActiveSessionCallbacks
 import com.yepanywhere.android.ui.ActiveSessionScreenState
@@ -292,6 +295,84 @@ class SupervisorShellScreenTest {
 
         composeRule.onNodeWithText("output-line-20")
             .assertIsDisplayed()
+    }
+
+    @Test
+    fun activeSessionInputRendersDeferredAttachmentsHoldAndStopControls() {
+        var queuedText: String? = null
+        var cancelledTempId: String? = null
+        var held: Boolean? = null
+        var stopped = false
+
+        renderShell(
+            activeSessionState = activeSessionState(
+                pendingRequests = emptyList(),
+                timeline = timeline(),
+            ).copy(
+                ownership = "self",
+                processId = "process-1",
+                processState = "in-turn",
+                isHeld = false,
+                attachments = listOf(
+                    SessionAttachment(
+                        id = "upload-1",
+                        name = "trace.log",
+                        sizeBytes = 1_024,
+                        mimeType = "text/plain",
+                    ),
+                ),
+                uploadProgress = listOf(
+                    SessionUploadProgress(
+                        fileId = "upload-2",
+                        fileName = "screenshot.png",
+                        bytesUploaded = 25,
+                        totalBytes = 100,
+                    ),
+                ),
+                deferredMessages = listOf(
+                    PendingSessionMessage(
+                        tempId = "deferred-1",
+                        text = "Queued after current turn",
+                        deferred = true,
+                    ),
+                ),
+            ),
+            callbacks = ActiveSessionCallbacks(
+                onSendReply = {},
+                onApproveRequest = {},
+                onDenyRequest = { _, _ -> },
+                onAnswerQuestion = { _, _ -> },
+                onQueueDeferredReply = { queuedText = it },
+                onCancelDeferredMessage = { cancelledTempId = it },
+                onHoldChanged = { held = it },
+                onStopSession = { stopped = true },
+            ),
+        )
+
+        composeRule.onNodeWithTag("reply-input")
+            .performTextInput("  Queue after current turn  ")
+        composeRule.onNodeWithText("trace.log")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("screenshot.png 25%")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Queued after current turn")
+            .assertIsDisplayed()
+
+        composeRule.onNodeWithTag("reply-queue")
+            .performClick()
+        composeRule.onNodeWithTag("deferred-cancel-deferred-1")
+            .performClick()
+        composeRule.onNodeWithTag("session-hold")
+            .performClick()
+        composeRule.onNodeWithTag("session-stop")
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("Queue after current turn", queuedText)
+            assertEquals("deferred-1", cancelledTempId)
+            assertEquals(true, held)
+            assertEquals(true, stopped)
+        }
     }
 
     @Test

@@ -1,8 +1,11 @@
 package com.yepanywhere.android
 
 import android.Manifest
+import android.content.ContentResolver
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -33,6 +36,7 @@ import com.yepanywhere.android.ui.ActiveSessionCallbacks
 import com.yepanywhere.android.ui.AndroidAppTheme
 import com.yepanywhere.android.ui.NewSessionCallbacks
 import com.yepanywhere.android.ui.SupervisorShellScreen
+import com.yepanywhere.android.core.model.SessionAttachment
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -41,6 +45,13 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission(),
     ) {
         // The poster re-checks permission before notifying, so no state is needed here.
+    }
+    private val attachmentPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        uris.forEach { uri ->
+            activeSessionViewModel.addAttachment(uri.toSessionAttachment(contentResolver))
+        }
     }
 
     private val appContainer: AndroidAppContainer
@@ -84,6 +95,7 @@ class MainActivity : ComponentActivity() {
                 activeSessionViewModel = activeSessionViewModel,
                 newSessionViewModel = newSessionViewModel,
                 relayLoginViewModel = relayLoginViewModel,
+                onAttachClicked = { attachmentPickerLauncher.launch(arrayOf("*/*")) },
             )
         }
     }
@@ -133,6 +145,7 @@ private fun YepAnywhereAndroidApp(
     activeSessionViewModel: ActiveSessionViewModel,
     newSessionViewModel: NewSessionViewModel,
     relayLoginViewModel: RelayLoginViewModel,
+    onAttachClicked: () -> Unit,
 ) {
     val loginState by relayLoginViewModel.uiState.collectAsState()
     val shellState by shellViewModel.uiState.collectAsState()
@@ -141,8 +154,8 @@ private fun YepAnywhereAndroidApp(
     val inboxState by inboxViewModel.uiState.collectAsState()
     val activeSessionState by activeSessionViewModel.uiState.collectAsState()
     val newSessionState by newSessionViewModel.uiState.collectAsState()
-    val activeSessionCallbacks = remember(activeSessionViewModel) {
-        createActiveSessionCallbacks(activeSessionViewModel)
+    val activeSessionCallbacks = remember(activeSessionViewModel, onAttachClicked) {
+        createActiveSessionCallbacks(activeSessionViewModel, onAttachClicked)
     }
     val newSessionCallbacks = remember(newSessionViewModel) {
         createNewSessionCallbacks(newSessionViewModel)
@@ -215,7 +228,10 @@ private fun YepAnywhereAndroidApp(
     }
 }
 
-internal fun createActiveSessionCallbacks(handler: ActiveSessionCommandHandler): ActiveSessionCallbacks {
+internal fun createActiveSessionCallbacks(
+    handler: ActiveSessionCommandHandler,
+    onAttachClicked: () -> Unit = {},
+): ActiveSessionCallbacks {
     return ActiveSessionCallbacks(
         onSendReply = handler::sendReply,
         onApproveRequest = handler::approve,
@@ -223,6 +239,37 @@ internal fun createActiveSessionCallbacks(handler: ActiveSessionCommandHandler):
         onAnswerQuestion = handler::answerQuestion,
         onRefresh = { handler.refreshSessionDetail() },
         onRefreshMetadata = handler::refreshMetadata,
+        onDraftChanged = handler::updateDraft,
+        onQueueDeferredReply = { text -> handler.queueDeferredMessage(text) },
+        onCancelDeferredMessage = handler::cancelDeferredMessage,
+        onAttachClicked = onAttachClicked,
+        onRemoveAttachment = handler::removeAttachment,
+        onHoldChanged = handler::setHold,
+        onStopSession = handler::stopSession,
+    )
+}
+
+private fun Uri.toSessionAttachment(contentResolver: ContentResolver): SessionAttachment {
+    var displayName: String? = null
+    var sizeBytes = 0L
+    contentResolver.query(this, null, null, null, null)?.use { cursor ->
+        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+        if (cursor.moveToFirst()) {
+            if (nameIndex >= 0) {
+                displayName = cursor.getString(nameIndex)
+            }
+            if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                sizeBytes = cursor.getLong(sizeIndex)
+            }
+        }
+    }
+    return SessionAttachment(
+        id = toString(),
+        name = displayName ?: lastPathSegment ?: "Attachment",
+        sizeBytes = sizeBytes,
+        mimeType = contentResolver.getType(this),
+        url = toString(),
     )
 }
 

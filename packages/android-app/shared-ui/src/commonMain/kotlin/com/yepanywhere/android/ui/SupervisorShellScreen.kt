@@ -40,13 +40,16 @@ import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.PendingInputRequest
+import com.yepanywhere.android.core.model.PendingSessionMessage
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
+import com.yepanywhere.android.core.model.SessionAttachment
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionPaginationInfo
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.model.SessionUploadProgress
 import com.yepanywhere.android.core.model.SlashCommand
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 
@@ -121,6 +124,14 @@ data class ActiveSessionScreenState(
     val pagination: SessionPaginationInfo? = null,
     val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
+    val draft: String = "",
+    val attachments: List<SessionAttachment> = emptyList(),
+    val uploadProgress: List<SessionUploadProgress> = emptyList(),
+    val pendingMessages: List<PendingSessionMessage> = emptyList(),
+    val deferredMessages: List<PendingSessionMessage> = emptyList(),
+    val isHeld: Boolean = false,
+    val isSubmittingInput: Boolean = false,
+    val inputErrorMessage: String? = null,
 )
 
 data class NewSessionScreenState(
@@ -163,6 +174,13 @@ data class ActiveSessionCallbacks(
     val onAnswerQuestion: (requestId: String, answer: String) -> Unit,
     val onRefresh: () -> Unit = {},
     val onRefreshMetadata: () -> Unit = {},
+    val onDraftChanged: (String) -> Unit = {},
+    val onQueueDeferredReply: (String) -> Unit = {},
+    val onCancelDeferredMessage: (String) -> Unit = {},
+    val onAttachClicked: () -> Unit = {},
+    val onRemoveAttachment: (String) -> Unit = {},
+    val onHoldChanged: (Boolean) -> Unit = {},
+    val onStopSession: () -> Unit = {},
 )
 
 @Composable
@@ -982,9 +1000,21 @@ private fun ActiveSessionSection(
             ActiveSessionStatusBanner(connectionStatus = state.timeline.connectionStatus)
         }
 
-        ReplyComposer(
-            onSendReply = callbacks.onSendReply,
+        ActiveSessionInputControls(
+            state = state,
+            callbacks = callbacks,
             actionsEnabled = actionsEnabled,
+        )
+
+        ReplyComposer(
+            state = state,
+            callbacks = callbacks,
+            actionsEnabled = actionsEnabled,
+        )
+
+        DeferredMessagesSection(
+            messages = state.deferredMessages,
+            onCancel = callbacks.onCancelDeferredMessage,
         )
 
         SectionList(
@@ -1137,10 +1167,12 @@ private fun ActiveSessionStatusBanner(connectionStatus: RelayConnectionStatus) {
 
 @Composable
 private fun ReplyComposer(
-    onSendReply: (String) -> Unit,
+    state: ActiveSessionScreenState,
+    callbacks: ActiveSessionCallbacks,
     actionsEnabled: Boolean,
 ) {
-    var replyDraft by rememberSaveable { mutableStateOf("") }
+    var replyDraft by rememberSaveable(state.timeline.sessionId) { mutableStateOf(state.draft) }
+    val queueAvailable = state.processState != null && state.processState != "idle"
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -1161,28 +1193,165 @@ private fun ReplyComposer(
             )
             OutlinedTextField(
                 value = replyDraft,
-                onValueChange = { replyDraft = it },
+                onValueChange = { draft ->
+                    replyDraft = draft
+                    callbacks.onDraftChanged(draft)
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("reply-input"),
                 label = { Text("Message") },
                 minLines = 3,
             )
+            DraftAttachmentRows(
+                attachments = state.attachments,
+                uploadProgress = state.uploadProgress,
+                onAttachClicked = callbacks.onAttachClicked,
+                onRemoveAttachment = callbacks.onRemoveAttachment,
+            )
+            state.inputErrorMessage?.let { error ->
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             ) {
                 Button(
-                    modifier = Modifier.testTag("reply-send"),
-                    enabled = actionsEnabled && replyDraft.isNotBlank(),
+                    modifier = Modifier.testTag("reply-queue"),
+                    enabled = actionsEnabled && queueAvailable && replyDraft.isNotBlank() && !state.isSubmittingInput,
                     onClick = {
-                        onSendReply(replyDraft.trim())
+                        callbacks.onQueueDeferredReply(replyDraft.trim())
+                        replyDraft = ""
+                    },
+                ) {
+                    Text("Queue")
+                }
+                Button(
+                    modifier = Modifier.testTag("reply-send"),
+                    enabled = actionsEnabled && replyDraft.isNotBlank() && !state.isSubmittingInput,
+                    onClick = {
+                        callbacks.onSendReply(replyDraft.trim())
                         replyDraft = ""
                     },
                 ) {
                     Text("Send reply")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ActiveSessionInputControls(
+    state: ActiveSessionScreenState,
+    callbacks: ActiveSessionCallbacks,
+    actionsEnabled: Boolean,
+) {
+    val canControlProcess = state.ownership == "self" && state.processId != null
+    if (!canControlProcess && state.processState == null) {
+        return
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Button(
+            modifier = Modifier
+                .weight(1f)
+                .testTag("session-hold"),
+            enabled = actionsEnabled,
+            onClick = { callbacks.onHoldChanged(!state.isHeld) },
+        ) {
+            Text(if (state.isHeld) "Resume" else "Hold")
+        }
+        Button(
+            modifier = Modifier
+                .weight(1f)
+                .testTag("session-stop"),
+            enabled = actionsEnabled && canControlProcess,
+            onClick = callbacks.onStopSession,
+        ) {
+            Text("Stop")
+        }
+    }
+}
+
+@Composable
+private fun DraftAttachmentRows(
+    attachments: List<SessionAttachment>,
+    uploadProgress: List<SessionUploadProgress>,
+    onAttachClicked: () -> Unit,
+    onRemoveAttachment: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Button(
+                modifier = Modifier.testTag("reply-attach"),
+                onClick = onAttachClicked,
+            ) {
+                Text("Attach")
+            }
+        }
+        attachments.forEach { attachment ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    modifier = Modifier.weight(1f),
+                    text = attachment.name,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(
+                    modifier = Modifier.testTag("attachment-remove-${attachment.id}"),
+                    onClick = { onRemoveAttachment(attachment.id) },
+                ) {
+                    Text("Remove")
+                }
+            }
+        }
+        uploadProgress.forEach { progress ->
+            Text(
+                text = "${progress.fileName} ${progress.percent}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeferredMessagesSection(
+    messages: List<PendingSessionMessage>,
+    onCancel: (String) -> Unit,
+) {
+    if (messages.isEmpty()) {
+        return
+    }
+    SectionList(
+        title = "Queued messages",
+        subtitle = "Deferred messages will send after the current turn completes.",
+        items = messages,
+    ) { message ->
+        ListCard(
+            title = message.text,
+            subtitle = if (message.deferred) "Deferred" else "Pending",
+            trailing = "Cancel",
+            onClick = { onCancel(message.tempId) },
+        )
+        Button(
+            modifier = Modifier.testTag("deferred-cancel-${message.tempId}"),
+            onClick = { onCancel(message.tempId) },
+        ) {
+            Text("Cancel")
         }
     }
 }

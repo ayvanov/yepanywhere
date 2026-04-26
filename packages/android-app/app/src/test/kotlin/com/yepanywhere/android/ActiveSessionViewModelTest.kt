@@ -2,6 +2,9 @@ package com.yepanywhere.android
 
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.PendingInputRequest
+import com.yepanywhere.android.core.model.ProcessControlResult
+import com.yepanywhere.android.core.model.SessionAttachment
+import com.yepanywhere.android.core.model.SessionInputRequest
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionDetail
@@ -224,6 +227,87 @@ class ActiveSessionViewModelTest {
         externalScope.cancel()
     }
 
+    @Test
+    fun managesDraftDeferredMessagesAttachmentsHoldAndStopControls() = runTest {
+        val timeline = MutableStateFlow(emptyTimeline())
+        val pendingRequests = MutableStateFlow(emptyList<PendingInputRequest>())
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val sessionsRepository = FakeSessionsRepository(
+            timeline = timeline,
+            detail = sessionDetail(
+                ownership = "self",
+                processState = "in-turn",
+            ),
+        )
+        val viewModel = ActiveSessionViewModel(
+            observeActiveSessionUseCase = ObserveActiveSessionUseCase(
+                sessionsRepository = sessionsRepository,
+                approvalsRepository = FakeApprovalsRepository(pendingRequests),
+            ),
+            sendSessionReplyUseCase = SendSessionReplyUseCase(sessionsRepository),
+            approveRequestUseCase = ApproveRequestUseCase(FakeApprovalsRepository(pendingRequests)),
+            denyRequestUseCase = DenyRequestUseCase(FakeApprovalsRepository(pendingRequests)),
+            answerQuestionUseCase = AnswerQuestionUseCase(FakeApprovalsRepository(pendingRequests)),
+            activeSessionId = "session-android-shell",
+            sessionsRepository = sessionsRepository,
+            scope = externalScope,
+        )
+
+        viewModel.openSession(projectId = "project-yep", sessionId = "session-detail")
+        advanceUntilIdle()
+
+        viewModel.updateDraft("  Run the Android checks  ")
+        viewModel.addAttachment(
+            SessionAttachment(
+                id = "upload-1",
+                name = "trace.log",
+                sizeBytes = 1_024,
+                mimeType = "text/plain",
+            ),
+        )
+        viewModel.queueDeferredMessage()
+        advanceUntilIdle()
+
+        val deferred = viewModel.uiState.value.deferredMessages.single()
+        assertEquals("Run the Android checks", deferred.text)
+        assertEquals(true, deferred.deferred)
+        assertEquals(listOf("trace.log"), deferred.attachments.map { it.name })
+        assertEquals("", viewModel.uiState.value.draft)
+        assertEquals(emptyList(), viewModel.uiState.value.attachments)
+        assertEquals(
+            listOf(
+                SessionInputRequest(
+                    message = "Run the Android checks",
+                    attachments = listOf(
+                        SessionAttachment(
+                            id = "upload-1",
+                            name = "trace.log",
+                            sizeBytes = 1_024,
+                            mimeType = "text/plain",
+                        ),
+                    ),
+                    tempId = deferred.tempId,
+                    deferred = true,
+                ),
+            ),
+            sessionsRepository.queuedInputs,
+        )
+
+        viewModel.cancelDeferredMessage(deferred.tempId)
+        viewModel.setHold(true)
+        viewModel.stopSession()
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), viewModel.uiState.value.deferredMessages)
+        assertEquals(true, viewModel.uiState.value.isHeld)
+        assertEquals(listOf("session-detail|${deferred.tempId}"), sessionsRepository.cancelledDeferred)
+        assertEquals(listOf("session-detail|true"), sessionsRepository.holdChanges)
+        assertEquals(listOf("process-1"), sessionsRepository.interruptedProcesses)
+        assertEquals(emptyList(), sessionsRepository.abortedProcesses)
+
+        externalScope.cancel()
+    }
+
     private class FakeSessionsRepository(
         private val timeline: MutableStateFlow<SessionTimeline>,
         private val detail: SessionDetail? = null,
@@ -232,6 +316,11 @@ class ActiveSessionViewModelTest {
         val sentReplies = mutableListOf<String>()
         val detailLoads = mutableListOf<String>()
         val metadataLoads = mutableListOf<String>()
+        val queuedInputs = mutableListOf<SessionInputRequest>()
+        val cancelledDeferred = mutableListOf<String>()
+        val holdChanges = mutableListOf<String>()
+        val interruptedProcesses = mutableListOf<String>()
+        val abortedProcesses = mutableListOf<String>()
 
         override fun observeSessions(projectId: String?): Flow<List<SessionSummary>> = MutableStateFlow(emptyList())
 
@@ -258,6 +347,34 @@ class ActiveSessionViewModelTest {
 
         override suspend fun sendReply(sessionId: String, text: String) {
             sentReplies += "$sessionId|$text"
+        }
+
+        override suspend fun queueSessionInput(
+            sessionId: String,
+            request: SessionInputRequest,
+        ): Boolean {
+            queuedInputs += request
+            return true
+        }
+
+        override suspend fun cancelDeferredMessage(sessionId: String, tempId: String): Boolean {
+            cancelledDeferred += "$sessionId|$tempId"
+            return true
+        }
+
+        override suspend fun setSessionHold(sessionId: String, hold: Boolean): Boolean {
+            holdChanges += "$sessionId|$hold"
+            return hold
+        }
+
+        override suspend fun interruptProcess(processId: String): ProcessControlResult {
+            interruptedProcesses += processId
+            return ProcessControlResult(success = true, supported = true)
+        }
+
+        override suspend fun abortProcess(processId: String): Boolean {
+            abortedProcesses += processId
+            return true
         }
     }
 

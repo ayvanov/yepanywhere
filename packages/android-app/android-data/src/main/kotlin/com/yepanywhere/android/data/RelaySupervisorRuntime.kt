@@ -13,12 +13,15 @@ import com.yepanywhere.android.core.model.NewSessionSettings
 import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
+import com.yepanywhere.android.core.model.ProcessControlResult
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
+import com.yepanywhere.android.core.model.SessionAttachment
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionDetail
 import com.yepanywhere.android.core.model.SessionDetailQuery
+import com.yepanywhere.android.core.model.SessionInputRequest
 import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.SessionPaginationInfo
 import com.yepanywhere.android.core.model.SessionStatus
@@ -567,6 +570,67 @@ class RelaySupervisorRuntime(
             return payload.asObject()?.get("queued").asBoolean()
                 ?: payload.asObject()?.get("accepted").asBoolean()
                 ?: true
+        }
+
+        override suspend fun queueSessionInput(
+            sessionId: String,
+            request: SessionInputRequest,
+        ): Boolean {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestJson(
+                method = "POST",
+                path = "/sessions/$backendSessionId/messages",
+                body = request.toJsonObject(),
+            )
+            return payload.asObject()?.get("queued").asBoolean()
+                ?: payload.asObject()?.get("accepted").asBoolean()
+                ?: true
+        }
+
+        override suspend fun cancelDeferredMessage(
+            sessionId: String,
+            tempId: String,
+        ): Boolean {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestJson(
+                method = "DELETE",
+                path = "/sessions/$backendSessionId/deferred/${tempId.urlEncode()}",
+            )
+            return payload.asObject()?.get("cancelled").asBoolean() ?: true
+        }
+
+        override suspend fun setSessionHold(
+            sessionId: String,
+            hold: Boolean,
+        ): Boolean {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestJson(
+                method = "PUT",
+                path = "/sessions/$backendSessionId/hold",
+                body = buildJsonObject {
+                    put("hold", hold)
+                },
+            )
+            return payload.asObject()?.get("isHeld").asBoolean() ?: hold
+        }
+
+        override suspend fun interruptProcess(processId: String): ProcessControlResult {
+            val payload = requestJson(
+                method = "POST",
+                path = "/processes/$processId/interrupt",
+            )
+            return ProcessControlResult(
+                success = payload.asObject()?.get("interrupted").asBoolean() ?: false,
+                supported = payload.asObject()?.get("supported").asBoolean() ?: false,
+            )
+        }
+
+        override suspend fun abortProcess(processId: String): Boolean {
+            val payload = requestJson(
+                method = "POST",
+                path = "/processes/$processId/abort",
+            )
+            return payload.asObject()?.get("aborted").asBoolean() ?: true
         }
     }
 
@@ -1302,6 +1366,35 @@ private fun NewSessionDefaults.toJsonObject(): JsonObject {
         permissionMode?.let { put("permissionMode", it) }
         thinking?.let { put("thinking", buildJsonObject { put("type", it) }) }
         executor?.let { put("executor", it) }
+    }
+}
+
+private fun SessionInputRequest.toJsonObject(): JsonObject {
+    return buildJsonObject {
+        put("message", message)
+        mode?.let { put("mode", it) }
+        thinking?.let { put("thinking", buildJsonObject { put("type", it) }) }
+        tempId?.let { put("tempId", it) }
+        if (attachments.isNotEmpty()) {
+            put(
+                "attachments",
+                JsonArray(attachments.map { attachment -> attachment.toJsonObject() }),
+            )
+        }
+        if (deferred) {
+            put("deferred", true)
+        }
+    }
+}
+
+private fun SessionAttachment.toJsonObject(): JsonObject {
+    return buildJsonObject {
+        put("id", id)
+        put("originalName", name)
+        put("name", name)
+        put("path", url ?: id)
+        put("size", sizeBytes)
+        put("mimeType", mimeType ?: "application/octet-stream")
     }
 }
 

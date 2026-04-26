@@ -11,8 +11,10 @@ import com.yepanywhere.android.core.model.NewSessionSettings
 import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
+import com.yepanywhere.android.core.model.ProcessControlResult
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
+import com.yepanywhere.android.core.model.SessionInputRequest
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionDetail
@@ -430,6 +432,26 @@ class InMemorySupervisorRuntime(
             sendReply(sessionId, prompt)
             return true
         }
+
+        override suspend fun queueSessionInput(
+            sessionId: String,
+            request: SessionInputRequest,
+        ): Boolean {
+            if (!request.deferred) {
+                sendReply(sessionId, request.message)
+            }
+            return true
+        }
+
+        override suspend fun cancelDeferredMessage(sessionId: String, tempId: String): Boolean = true
+
+        override suspend fun setSessionHold(sessionId: String, hold: Boolean): Boolean = hold
+
+        override suspend fun interruptProcess(processId: String): ProcessControlResult {
+            return ProcessControlResult(success = true, supported = true)
+        }
+
+        override suspend fun abortProcess(processId: String): Boolean = true
     }
 
     override val approvalsRepository: ApprovalsRepository = object : ApprovalsRepository {

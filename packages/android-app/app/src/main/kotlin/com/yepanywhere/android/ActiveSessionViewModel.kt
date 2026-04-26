@@ -8,8 +8,11 @@ import com.yepanywhere.android.core.usecase.ApproveRequestUseCase
 import com.yepanywhere.android.core.usecase.DenyRequestUseCase
 import com.yepanywhere.android.core.usecase.ObserveActiveSessionUseCase
 import com.yepanywhere.android.core.usecase.SendSessionReplyUseCase
+import com.yepanywhere.android.core.model.PendingSessionMessage
+import com.yepanywhere.android.core.model.SessionAttachment
 import com.yepanywhere.android.core.model.SessionDetail
 import com.yepanywhere.android.core.model.SessionDetailQuery
+import com.yepanywhere.android.core.model.SessionInputRequest
 import com.yepanywhere.android.core.repository.SessionsRepository
 import com.yepanywhere.android.ui.ActiveSessionScreenState
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +40,20 @@ interface ActiveSessionCommandHandler {
     fun refreshSessionDetail(query: SessionDetailQuery = SessionDetailQuery()) = Unit
 
     fun refreshMetadata() = Unit
+
+    fun updateDraft(text: String) = Unit
+
+    fun queueDeferredMessage(text: String? = null) = Unit
+
+    fun cancelDeferredMessage(tempId: String) = Unit
+
+    fun addAttachment(attachment: SessionAttachment) = Unit
+
+    fun removeAttachment(attachmentId: String) = Unit
+
+    fun setHold(hold: Boolean) = Unit
+
+    fun stopSession() = Unit
 }
 
 class ActiveSessionViewModel(
@@ -52,6 +69,7 @@ class ActiveSessionViewModel(
     private val coroutineScope = scope ?: viewModelScope
     private var selectedProjectId: String? = null
     private var selectedSessionId: String? = null
+    private var pendingInputCounter = 0
 
     private val mutableUiState = MutableStateFlow(
         ActiveSessionScreenState(
@@ -144,11 +162,165 @@ class ActiveSessionViewModel(
     }
 
     override fun sendReply(text: String) {
-        coroutineScope.launch {
-            sendSessionReplyUseCase(
-                sessionId = selectedSessionId ?: activeSessionId,
-                text = text,
+        val tempId = nextTempId()
+        val pendingMessage = PendingSessionMessage(
+            tempId = tempId,
+            text = text.trim(),
+            status = "Sending",
+            deferred = false,
+            attachments = mutableUiState.value.attachments,
+        )
+        mutableUiState.update {
+            it.copy(
+                draft = "",
+                attachments = emptyList(),
+                pendingMessages = it.pendingMessages + pendingMessage,
+                inputErrorMessage = null,
             )
+        }
+        coroutineScope.launch {
+            runCatching {
+                sendSessionReplyUseCase(
+                    sessionId = selectedSessionId ?: activeSessionId,
+                    text = text,
+                )
+            }.onSuccess {
+                mutableUiState.update { state ->
+                    state.copy(pendingMessages = state.pendingMessages.filterNot { it.tempId == tempId })
+                }
+            }.onFailure { error ->
+                mutableUiState.update { state ->
+                    state.copy(
+                        pendingMessages = state.pendingMessages.filterNot { it.tempId == tempId },
+                        draft = text,
+                        attachments = pendingMessage.attachments,
+                        inputErrorMessage = error.message ?: "Failed to send message.",
+                    )
+                }
+            }
+        }
+    }
+
+    override fun updateDraft(text: String) {
+        mutableUiState.update { it.copy(draft = text) }
+    }
+
+    override fun addAttachment(attachment: SessionAttachment) {
+        mutableUiState.update { state ->
+            state.copy(attachments = (state.attachments.filterNot { it.id == attachment.id } + attachment))
+        }
+    }
+
+    override fun removeAttachment(attachmentId: String) {
+        mutableUiState.update { state ->
+            state.copy(attachments = state.attachments.filterNot { it.id == attachmentId })
+        }
+    }
+
+    override fun queueDeferredMessage(text: String?) {
+        val message = (text ?: mutableUiState.value.draft).trim()
+        val attachments = mutableUiState.value.attachments
+        if (message.isBlank() && attachments.isEmpty()) {
+            return
+        }
+        val sessionId = selectedSessionId ?: activeSessionId
+        val tempId = nextTempId()
+        val pending = PendingSessionMessage(
+            tempId = tempId,
+            text = message,
+            status = "Queued",
+            deferred = true,
+            attachments = attachments,
+        )
+        mutableUiState.update { state ->
+            state.copy(
+                draft = "",
+                attachments = emptyList(),
+                deferredMessages = state.deferredMessages + pending,
+                isSubmittingInput = true,
+                inputErrorMessage = null,
+            )
+        }
+        coroutineScope.launch {
+            runCatching {
+                requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                    .queueSessionInput(
+                        sessionId = sessionId,
+                        request = SessionInputRequest(
+                            message = message,
+                            attachments = attachments,
+                            tempId = tempId,
+                            deferred = true,
+                        ),
+                    )
+            }.onSuccess {
+                mutableUiState.update { it.copy(isSubmittingInput = false) }
+            }.onFailure { error ->
+                mutableUiState.update { state ->
+                    state.copy(
+                        deferredMessages = state.deferredMessages.filterNot { it.tempId == tempId },
+                        draft = message,
+                        attachments = attachments,
+                        isSubmittingInput = false,
+                        inputErrorMessage = error.message ?: "Failed to queue message.",
+                    )
+                }
+            }
+        }
+    }
+
+    override fun cancelDeferredMessage(tempId: String) {
+        val sessionId = selectedSessionId ?: activeSessionId
+        coroutineScope.launch {
+            runCatching {
+                requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                    .cancelDeferredMessage(sessionId, tempId)
+            }.onSuccess {
+                mutableUiState.update { state ->
+                    state.copy(deferredMessages = state.deferredMessages.filterNot { it.tempId == tempId })
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(inputErrorMessage = error.message ?: "Failed to cancel queued message.")
+                }
+            }
+        }
+    }
+
+    override fun setHold(hold: Boolean) {
+        val sessionId = selectedSessionId ?: activeSessionId
+        mutableUiState.update { it.copy(isHeld = hold) }
+        coroutineScope.launch {
+            runCatching {
+                requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                    .setSessionHold(sessionId, hold)
+            }.onSuccess { isHeld ->
+                mutableUiState.update { it.copy(isHeld = isHeld) }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        isHeld = !hold,
+                        inputErrorMessage = error.message ?: "Failed to update hold state.",
+                    )
+                }
+            }
+        }
+    }
+
+    override fun stopSession() {
+        val processId = mutableUiState.value.processId ?: return
+        coroutineScope.launch {
+            runCatching {
+                val repository = requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                val interrupted = repository.interruptProcess(processId)
+                if (!interrupted.success || !interrupted.supported) {
+                    repository.abortProcess(processId)
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(inputErrorMessage = error.message ?: "Failed to stop session.")
+                }
+            }
         }
     }
 
@@ -174,6 +346,7 @@ class ActiveSessionViewModel(
                 model = detail.model,
                 slashCommands = detail.slashCommands,
                 pagination = detail.pagination,
+                isHeld = detail.processState == "held",
                 isRefreshing = false,
                 errorMessage = null,
             )
@@ -202,6 +375,11 @@ class ActiveSessionViewModel(
                 answer = answer,
             )
         }
+    }
+
+    private fun nextTempId(): String {
+        pendingInputCounter += 1
+        return "android-${pendingInputCounter}"
     }
 
     companion object {
