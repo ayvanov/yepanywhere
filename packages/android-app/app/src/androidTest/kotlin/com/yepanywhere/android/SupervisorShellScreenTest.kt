@@ -20,11 +20,13 @@ import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.PendingSessionMessage
+import com.yepanywhere.android.core.model.ProcessModelOption
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.SessionAttachment
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
+import com.yepanywhere.android.core.model.SessionProcessInfo
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
@@ -407,6 +409,60 @@ class SupervisorShellScreenTest {
     }
 
     @Test
+    fun activeSessionProcessControlsLoadAndSwitchModel() {
+        var processInfoLoads = 0
+        var processModelLoads = 0
+        var switchedModel: String? = null
+
+        renderShell(
+            activeSessionState = activeSessionState(
+                processInfo = SessionProcessInfo(
+                    id = "process-1",
+                    sessionId = "session-android-shell",
+                    projectId = "project-yep",
+                    projectName = "Yep Anywhere",
+                    state = "in-turn",
+                    provider = "claude",
+                    model = "sonnet",
+                    thinking = "enabled",
+                    pid = 1234,
+                ),
+                processModels = listOf(
+                    ProcessModelOption(id = "sonnet", name = "Sonnet"),
+                    ProcessModelOption(id = "opus", name = "Opus"),
+                ),
+            ),
+            callbacks = ActiveSessionCallbacks(
+                onSendReply = {},
+                onApproveRequest = {},
+                onDenyRequest = { _, _ -> },
+                onAnswerQuestion = { _, _ -> },
+                onLoadProcessInfo = { processInfoLoads += 1 },
+                onLoadProcessModels = { processModelLoads += 1 },
+                onSwitchProcessModel = { switchedModel = it },
+            ),
+        )
+
+        scrollShellTo("process-info-load")
+        composeRule.onNodeWithTag("process-info-load")
+            .performClick()
+        composeRule.onNodeWithTag("process-models-load")
+            .performClick()
+        composeRule.onNodeWithTag("process-info-summary")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Process process-1")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("process-model-opus")
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(1, processInfoLoads)
+            assertEquals(1, processModelLoads)
+            assertEquals("opus", switchedModel)
+        }
+    }
+
+    @Test
     fun navigationSelectionDispatchesRequestedSection() {
         val selectedSections = mutableListOf<SupervisorShellSection>()
 
@@ -714,12 +770,20 @@ class SupervisorShellScreenTest {
     private fun activeSessionState(
         pendingRequests: List<PendingInputRequest> = listOf(questionRequest()),
         timeline: SessionTimeline = timeline(),
+        processInfo: SessionProcessInfo? = null,
+        processModels: List<ProcessModelOption> = emptyList(),
     ): ActiveSessionScreenState {
         return ActiveSessionScreenState(
             title = "Active session",
             subtitle = "Foreground realtime shell for session detail and approvals.",
             timeline = timeline,
             pendingRequests = pendingRequests,
+            ownership = "self",
+            processId = "process-1",
+            processState = "in-turn",
+            model = "sonnet",
+            processInfo = processInfo,
+            processModels = processModels,
         )
     }
 

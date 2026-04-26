@@ -3,6 +3,8 @@ package com.yepanywhere.android.core.repository
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.ProcessControlResult
+import com.yepanywhere.android.core.model.ProcessModelOption
+import com.yepanywhere.android.core.model.ProcessModelSwitchResult
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionsPage
 import com.yepanywhere.android.core.model.NewSessionDefaults
@@ -16,6 +18,7 @@ import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.SessionDetail
 import com.yepanywhere.android.core.model.SessionDetailQuery
 import com.yepanywhere.android.core.model.SessionInputRequest
+import com.yepanywhere.android.core.model.SessionProcessInfo
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.model.StoredRelaySession
@@ -222,6 +225,21 @@ interface SessionsRepository {
 
     suspend fun abortProcess(processId: String): Boolean {
         throw NotImplementedError("Process abort is not implemented by this repository")
+    }
+
+    suspend fun getProcessInfo(sessionId: String): SessionProcessInfo? {
+        throw NotImplementedError("Process info is not implemented by this repository")
+    }
+
+    suspend fun getProcessModels(processId: String): List<ProcessModelOption> {
+        throw NotImplementedError("Process models are not implemented by this repository")
+    }
+
+    suspend fun setProcessModel(
+        processId: String,
+        model: String?,
+    ): ProcessModelSwitchResult {
+        throw NotImplementedError("Process model switching is not implemented by this repository")
     }
 }
 

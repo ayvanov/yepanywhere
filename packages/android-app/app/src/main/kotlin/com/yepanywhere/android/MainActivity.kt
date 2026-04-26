@@ -247,6 +247,9 @@ internal fun createActiveSessionCallbacks(
         onRemoveAttachment = handler::removeAttachment,
         onHoldChanged = handler::setHold,
         onStopSession = handler::stopSession,
+        onLoadProcessInfo = handler::loadProcessInfo,
+        onLoadProcessModels = handler::loadProcessModels,
+        onSwitchProcessModel = handler::switchProcessModel,
     )
 }
 

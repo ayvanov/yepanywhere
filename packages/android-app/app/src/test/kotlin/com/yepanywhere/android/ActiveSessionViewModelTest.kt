@@ -3,6 +3,8 @@ package com.yepanywhere.android
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProcessControlResult
+import com.yepanywhere.android.core.model.ProcessModelOption
+import com.yepanywhere.android.core.model.ProcessModelSwitchResult
 import com.yepanywhere.android.core.model.SessionAttachment
 import com.yepanywhere.android.core.model.SessionInputRequest
 import com.yepanywhere.android.core.model.SessionMessage
@@ -10,6 +12,7 @@ import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionDetail
 import com.yepanywhere.android.core.model.SessionDetailQuery
 import com.yepanywhere.android.core.model.SessionPaginationInfo
+import com.yepanywhere.android.core.model.SessionProcessInfo
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
@@ -71,7 +74,10 @@ class ActiveSessionViewModelTest {
             ),
         )
         val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-        val sessionsRepository = FakeSessionsRepository(timeline)
+        val sessionsRepository = FakeSessionsRepository(
+            timeline,
+            detail = sessionDetail(ownership = "self", processState = "in-turn"),
+        )
         val approvalsRepository = FakeApprovalsRepository(pendingRequests)
         val viewModel = ActiveSessionViewModel(
             observeActiveSessionUseCase = ObserveActiveSessionUseCase(
@@ -191,7 +197,10 @@ class ActiveSessionViewModelTest {
         val timeline = MutableStateFlow(emptyTimeline())
         val pendingRequests = MutableStateFlow(emptyList<PendingInputRequest>())
         val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-        val sessionsRepository = FakeSessionsRepository(timeline)
+        val sessionsRepository = FakeSessionsRepository(
+            timeline,
+            detail = sessionDetail(ownership = "self", processState = "in-turn"),
+        )
         val approvalsRepository = FakeApprovalsRepository(pendingRequests)
         val viewModel = ActiveSessionViewModel(
             observeActiveSessionUseCase = ObserveActiveSessionUseCase(
@@ -311,6 +320,49 @@ class ActiveSessionViewModelTest {
         externalScope.cancel()
     }
 
+    @Test
+    fun loadsProcessInfoModelsAndSwitchesModel() = runTest {
+        val timeline = MutableStateFlow(emptyTimeline())
+        val pendingRequests = MutableStateFlow(emptyList<PendingInputRequest>())
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val sessionsRepository = FakeSessionsRepository(
+            timeline,
+            detail = sessionDetail(ownership = "self", processState = "in-turn"),
+        )
+        val viewModel = ActiveSessionViewModel(
+            observeActiveSessionUseCase = ObserveActiveSessionUseCase(
+                sessionsRepository = sessionsRepository,
+                approvalsRepository = FakeApprovalsRepository(pendingRequests),
+            ),
+            sendSessionReplyUseCase = SendSessionReplyUseCase(sessionsRepository),
+            approveRequestUseCase = ApproveRequestUseCase(FakeApprovalsRepository(pendingRequests)),
+            denyRequestUseCase = DenyRequestUseCase(FakeApprovalsRepository(pendingRequests)),
+            answerQuestionUseCase = AnswerQuestionUseCase(FakeApprovalsRepository(pendingRequests)),
+            activeSessionId = "session-android-shell",
+            sessionsRepository = sessionsRepository,
+            scope = externalScope,
+        )
+        viewModel.openSession(
+            projectId = "project-android",
+            sessionId = "session-detail",
+        )
+        advanceUntilIdle()
+
+        viewModel.loadProcessInfo()
+        viewModel.loadProcessModels()
+        advanceUntilIdle()
+        viewModel.switchProcessModel("opus")
+        advanceUntilIdle()
+
+        assertEquals("session-detail", sessionsRepository.loadedProcessInfoSessionId)
+        assertEquals("process-1", viewModel.uiState.value.processInfo?.id)
+        assertEquals(listOf("sonnet", "opus"), viewModel.uiState.value.processModels.map { it.id })
+        assertEquals("process-1|opus", sessionsRepository.switchedModels.single())
+        assertEquals("opus", viewModel.uiState.value.model)
+
+        externalScope.cancel()
+    }
+
     private class FakeSessionsRepository(
         private val timeline: MutableStateFlow<SessionTimeline>,
         private val detail: SessionDetail? = null,
@@ -324,6 +376,8 @@ class ActiveSessionViewModelTest {
         val holdChanges = mutableListOf<String>()
         val interruptedProcesses = mutableListOf<String>()
         val abortedProcesses = mutableListOf<String>()
+        var loadedProcessInfoSessionId: String? = null
+        val switchedModels = mutableListOf<String>()
 
         override fun observeSessions(projectId: String?): Flow<List<SessionSummary>> = MutableStateFlow(emptyList())
 
@@ -378,6 +432,35 @@ class ActiveSessionViewModelTest {
         override suspend fun abortProcess(processId: String): Boolean {
             abortedProcesses += processId
             return true
+        }
+
+        override suspend fun getProcessInfo(sessionId: String): SessionProcessInfo {
+            loadedProcessInfoSessionId = sessionId
+            return SessionProcessInfo(
+                id = "process-1",
+                sessionId = sessionId,
+                projectId = "project-android",
+                projectName = "Yep Anywhere",
+                state = "in-turn",
+                provider = "claude",
+                model = "sonnet",
+                thinking = "enabled",
+            )
+        }
+
+        override suspend fun getProcessModels(processId: String): List<ProcessModelOption> {
+            return listOf(
+                ProcessModelOption(id = "sonnet", name = "Sonnet"),
+                ProcessModelOption(id = "opus", name = "Opus"),
+            )
+        }
+
+        override suspend fun setProcessModel(
+            processId: String,
+            model: String?,
+        ): ProcessModelSwitchResult {
+            switchedModels += "$processId|$model"
+            return ProcessModelSwitchResult(success = true, model = model)
         }
     }
 

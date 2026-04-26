@@ -599,6 +599,38 @@ class RelaySupervisorRuntimeTest {
     }
 
     @Test
+    fun processModelControlsUseBackendEndpoints() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        val processInfo = runtime.sessionsRepository.getProcessInfo("session-detail")
+        val models = runtime.sessionsRepository.getProcessModels("process-1")
+        val switchResult = runtime.sessionsRepository.setProcessModel("process-1", "opus")
+
+        assertEquals("process-1", processInfo?.id)
+        assertEquals("claude", processInfo?.provider)
+        assertEquals("sonnet", processInfo?.model)
+        assertEquals(listOf("sonnet", "opus"), models.map { it.id })
+        assertEquals(true, switchResult.success)
+        assertEquals("opus", switchResult.model)
+        assertEquals("GET", gateway.recordedRequest("GET", "/sessions/session-detail/process").method)
+        assertEquals("GET", gateway.recordedRequest("GET", "/processes/process-1/models").method)
+        assertEquals(
+            jsonObject("model" to JsonPrimitive("opus")),
+            gateway.recordedRequest("POST", "/processes/process-1/model").body,
+        )
+    }
+
+    @Test
     fun approveRequestHitsBackendInputEndpoint() = runTest(UnconfinedTestDispatcher()) {
         val gateway = FakeRelayRealtimeGateway()
         val runtime = RelaySupervisorRuntime(
@@ -1159,6 +1191,45 @@ class RelaySupervisorRuntimeTest {
                 "supported" to JsonPrimitive(true),
             )
             "/processes/process-1/abort" -> jsonObject("aborted" to JsonPrimitive(true))
+            "/sessions/session-detail/process" -> jsonObject(
+                "process" to jsonObject(
+                    "id" to JsonPrimitive("process-1"),
+                    "sessionId" to JsonPrimitive("session-detail"),
+                    "projectId" to JsonPrimitive("project-1"),
+                    "projectName" to JsonPrimitive("Yep Anywhere"),
+                    "projectPath" to JsonPrimitive("D:/projects/yepanywhere"),
+                    "sessionTitle" to JsonPrimitive("Android supervisor"),
+                    "state" to JsonPrimitive("in-turn"),
+                    "startedAt" to JsonPrimitive("2026-04-26T12:00:00Z"),
+                    "queueDepth" to JsonPrimitive(1),
+                    "provider" to JsonPrimitive("claude"),
+                    "model" to JsonPrimitive("sonnet"),
+                    "thinking" to jsonObject("type" to JsonPrimitive("enabled")),
+                    "effort" to JsonPrimitive("medium"),
+                    "executor" to JsonPrimitive("local"),
+                    "pid" to JsonPrimitive(1234),
+                ),
+            )
+            "/processes/process-1/models" -> jsonObject(
+                "models" to JsonArray(
+                    listOf(
+                        jsonObject(
+                            "id" to JsonPrimitive("sonnet"),
+                            "name" to JsonPrimitive("Sonnet"),
+                            "description" to JsonPrimitive("Balanced model"),
+                        ),
+                        jsonObject(
+                            "id" to JsonPrimitive("opus"),
+                            "name" to JsonPrimitive("Opus"),
+                            "description" to JsonPrimitive("Deep model"),
+                        ),
+                    ),
+                ),
+            )
+            "/processes/process-1/model" -> jsonObject(
+                "success" to JsonPrimitive(true),
+                "model" to JsonPrimitive("opus"),
+            )
             else -> JsonObject(emptyMap())
         }
         }

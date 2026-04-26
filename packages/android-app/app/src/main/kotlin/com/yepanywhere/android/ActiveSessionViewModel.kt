@@ -56,6 +56,12 @@ interface ActiveSessionCommandHandler {
     fun setHold(hold: Boolean) = Unit
 
     fun stopSession() = Unit
+
+    fun loadProcessInfo() = Unit
+
+    fun loadProcessModels() = Unit
+
+    fun switchProcessModel(modelId: String) = Unit
 }
 
 class ActiveSessionViewModel(
@@ -321,6 +327,79 @@ class ActiveSessionViewModel(
             }.onFailure { error ->
                 mutableUiState.update {
                     it.copy(inputErrorMessage = error.message ?: "Failed to stop session.")
+                }
+            }
+        }
+    }
+
+    override fun loadProcessInfo() {
+        val sessionId = selectedSessionId ?: activeSessionId
+        mutableUiState.update {
+            it.copy(isLoadingProcessInfo = true, processControlErrorMessage = null)
+        }
+        coroutineScope.launch {
+            runCatching {
+                requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                    .getProcessInfo(sessionId)
+            }.onSuccess { processInfo ->
+                mutableUiState.update {
+                    it.copy(
+                        processInfo = processInfo,
+                        isLoadingProcessInfo = false,
+                        processControlErrorMessage = null,
+                    )
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        isLoadingProcessInfo = false,
+                        processControlErrorMessage = error.message ?: "Failed to load process info.",
+                    )
+                }
+            }
+        }
+    }
+
+    override fun loadProcessModels() {
+        val processId = mutableUiState.value.processId ?: return
+        mutableUiState.update { it.copy(processControlErrorMessage = null) }
+        coroutineScope.launch {
+            runCatching {
+                requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                    .getProcessModels(processId)
+            }.onSuccess { models ->
+                mutableUiState.update {
+                    it.copy(processModels = models, processControlErrorMessage = null)
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(processControlErrorMessage = error.message ?: "Failed to load process models.")
+                }
+            }
+        }
+    }
+
+    override fun switchProcessModel(modelId: String) {
+        val processId = mutableUiState.value.processId ?: return
+        mutableUiState.update { it.copy(isSwitchingModel = true, processControlErrorMessage = null) }
+        coroutineScope.launch {
+            runCatching {
+                requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                    .setProcessModel(processId = processId, model = modelId)
+            }.onSuccess { result ->
+                mutableUiState.update {
+                    it.copy(
+                        model = result.model ?: modelId,
+                        isSwitchingModel = false,
+                        processControlErrorMessage = null,
+                    )
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        isSwitchingModel = false,
+                        processControlErrorMessage = error.message ?: "Failed to switch model.",
+                    )
                 }
             }
         }

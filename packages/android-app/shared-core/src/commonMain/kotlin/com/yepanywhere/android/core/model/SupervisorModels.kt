@@ -295,6 +295,35 @@ data class ProcessControlResult(
     val supported: Boolean = true,
 )
 
+data class SessionProcessInfo(
+    val id: String,
+    val sessionId: String,
+    val projectId: String,
+    val projectName: String,
+    val projectPath: String? = null,
+    val sessionTitle: String? = null,
+    val state: String,
+    val startedAt: String? = null,
+    val queueDepth: Int = 0,
+    val provider: String? = null,
+    val model: String? = null,
+    val thinking: String? = null,
+    val effort: String? = null,
+    val executor: String? = null,
+    val pid: Int? = null,
+)
+
+data class ProcessModelOption(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+)
+
+data class ProcessModelSwitchResult(
+    val success: Boolean,
+    val model: String? = null,
+)
+
 data class PendingInputRequest(
     val id: String,
     val sessionId: String,

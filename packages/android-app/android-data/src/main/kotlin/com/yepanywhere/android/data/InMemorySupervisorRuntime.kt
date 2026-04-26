@@ -12,6 +12,8 @@ import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.ProcessControlResult
+import com.yepanywhere.android.core.model.ProcessModelOption
+import com.yepanywhere.android.core.model.ProcessModelSwitchResult
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.SessionInputRequest
@@ -20,6 +22,7 @@ import com.yepanywhere.android.core.model.SessionMessageAuthor
 import com.yepanywhere.android.core.model.SessionDetail
 import com.yepanywhere.android.core.model.SessionDetailQuery
 import com.yepanywhere.android.core.model.SessionMetadataUpdate
+import com.yepanywhere.android.core.model.SessionProcessInfo
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
@@ -452,6 +455,35 @@ class InMemorySupervisorRuntime(
         }
 
         override suspend fun abortProcess(processId: String): Boolean = true
+
+        override suspend fun getProcessInfo(sessionId: String): SessionProcessInfo? {
+            val session = cache.observeSessions().first().firstOrNull { it.id == sessionId }
+            return SessionProcessInfo(
+                id = "process-$sessionId",
+                sessionId = sessionId,
+                projectId = session?.projectId ?: "project-android",
+                projectName = session?.projectId ?: "Android project",
+                sessionTitle = session?.title,
+                state = "idle",
+                startedAt = "now",
+                provider = session?.provider ?: "claude",
+                model = session?.model,
+            )
+        }
+
+        override suspend fun getProcessModels(processId: String): List<ProcessModelOption> {
+            return listOf(
+                ProcessModelOption(id = "sonnet", name = "Sonnet"),
+                ProcessModelOption(id = "opus", name = "Opus"),
+            )
+        }
+
+        override suspend fun setProcessModel(
+            processId: String,
+            model: String?,
+        ): ProcessModelSwitchResult {
+            return ProcessModelSwitchResult(success = true, model = model)
+        }
     }
 
     override val approvalsRepository: ApprovalsRepository = object : ApprovalsRepository {

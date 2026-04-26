@@ -41,11 +41,13 @@ import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.PendingSessionMessage
+import com.yepanywhere.android.core.model.ProcessModelOption
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.SessionAttachment
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
+import com.yepanywhere.android.core.model.SessionProcessInfo
 import com.yepanywhere.android.core.model.SessionPaginationInfo
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
@@ -132,6 +134,11 @@ data class ActiveSessionScreenState(
     val isHeld: Boolean = false,
     val isSubmittingInput: Boolean = false,
     val inputErrorMessage: String? = null,
+    val processInfo: SessionProcessInfo? = null,
+    val processModels: List<ProcessModelOption> = emptyList(),
+    val isLoadingProcessInfo: Boolean = false,
+    val isSwitchingModel: Boolean = false,
+    val processControlErrorMessage: String? = null,
 )
 
 data class NewSessionScreenState(
@@ -182,6 +189,9 @@ data class ActiveSessionCallbacks(
     val onRemoveAttachment: (String) -> Unit = {},
     val onHoldChanged: (Boolean) -> Unit = {},
     val onStopSession: () -> Unit = {},
+    val onLoadProcessInfo: () -> Unit = {},
+    val onLoadProcessModels: () -> Unit = {},
+    val onSwitchProcessModel: (String) -> Unit = {},
 )
 
 @Composable
@@ -1121,6 +1131,98 @@ private fun ActiveSessionMetadataCard(
                 ) {
                     Text(if (state.isRefreshing) "Refreshing" else "Refresh")
                 }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("process-info-load"),
+                    enabled = !state.isLoadingProcessInfo,
+                    onClick = callbacks.onLoadProcessInfo,
+                ) {
+                    Text(if (state.isLoadingProcessInfo) "Loading" else "Process")
+                }
+                Button(
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("process-models-load"),
+                    enabled = state.processId != null && !state.isSwitchingModel,
+                    onClick = callbacks.onLoadProcessModels,
+                ) {
+                    Text("Models")
+                }
+            }
+            state.processControlErrorMessage?.let { error ->
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            ProcessInfoSummary(state.processInfo)
+            ProcessModelList(
+                models = state.processModels,
+                currentModel = state.model,
+                switching = state.isSwitchingModel,
+                onSwitchProcessModel = callbacks.onSwitchProcessModel,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProcessInfoSummary(processInfo: SessionProcessInfo?) {
+    if (processInfo == null) {
+        return
+    }
+    Column(
+        modifier = Modifier.testTag("process-info-summary"),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text("Process ${processInfo.id}", style = MaterialTheme.typography.labelLarge)
+        Text(
+            text = buildList {
+                add("State ${processInfo.state}")
+                processInfo.provider?.let { add("Provider $it") }
+                processInfo.model?.let { add("Model $it") }
+                processInfo.thinking?.let { add("Thinking $it") }
+                processInfo.executor?.let { add("Executor $it") }
+                processInfo.pid?.let { add("PID $it") }
+            }.joinToString(" • "),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ProcessModelList(
+    models: List<ProcessModelOption>,
+    currentModel: String?,
+    switching: Boolean,
+    onSwitchProcessModel: (String) -> Unit,
+) {
+    if (models.isEmpty()) {
+        return
+    }
+    Column(
+        modifier = Modifier.testTag("process-model-list"),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        models.forEach { model ->
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("process-model-${model.id}"),
+                enabled = !switching && model.id != currentModel,
+                onClick = { onSwitchProcessModel(model.id) },
+            ) {
+                Text(
+                    text = if (model.id == currentModel) "${model.name} (current)" else model.name,
+                )
             }
         }
     }

@@ -14,6 +14,8 @@ import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.ProcessControlResult
+import com.yepanywhere.android.core.model.ProcessModelOption
+import com.yepanywhere.android.core.model.ProcessModelSwitchResult
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.SessionAttachment
@@ -24,6 +26,7 @@ import com.yepanywhere.android.core.model.SessionDetailQuery
 import com.yepanywhere.android.core.model.SessionInputRequest
 import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.SessionPaginationInfo
+import com.yepanywhere.android.core.model.SessionProcessInfo
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
@@ -631,6 +634,42 @@ class RelaySupervisorRuntime(
                 path = "/processes/$processId/abort",
             )
             return payload.asObject()?.get("aborted").asBoolean() ?: true
+        }
+
+        override suspend fun getProcessInfo(sessionId: String): SessionProcessInfo? {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestObject(
+                method = "GET",
+                path = "/sessions/$backendSessionId/process",
+            )
+            return payload["process"].asObject()?.toSessionProcessInfo()
+        }
+
+        override suspend fun getProcessModels(processId: String): List<ProcessModelOption> {
+            val payload = requestObject(
+                method = "GET",
+                path = "/processes/$processId/models",
+            )
+            return payload["models"].asJsonArray().mapNotNull { element ->
+                element.asObject()?.toProcessModelOption()
+            }
+        }
+
+        override suspend fun setProcessModel(
+            processId: String,
+            model: String?,
+        ): ProcessModelSwitchResult {
+            val payload = requestJson(
+                method = "POST",
+                path = "/processes/$processId/model",
+                body = buildJsonObject {
+                    model?.let { put("model", it) }
+                },
+            )
+            return ProcessModelSwitchResult(
+                success = payload.asObject()?.get("success").asBoolean() ?: false,
+                model = payload.asObject()?.get("model").asString(),
+            )
         }
     }
 
@@ -1630,5 +1669,36 @@ private fun JsonObject.toPendingRequest(sessionId: String): PendingInputRequest 
         title = if (kind == InboxItemKind.APPROVAL) "Approval required" else "Question",
         body = this["prompt"].asString() ?: "",
         kind = kind,
+    )
+}
+
+private fun JsonObject.toSessionProcessInfo(): SessionProcessInfo {
+    val thinking = this["thinking"].asObject()?.get("type").asString()
+        ?: this["thinking"].asString()
+    return SessionProcessInfo(
+        id = this["id"].asString() ?: "",
+        sessionId = this["sessionId"].asString() ?: "",
+        projectId = this["projectId"].asString() ?: "",
+        projectName = this["projectName"].asString() ?: "",
+        projectPath = this["projectPath"].asString(),
+        sessionTitle = this["sessionTitle"].asString(),
+        state = this["state"].asString() ?: "",
+        startedAt = this["startedAt"].asString(),
+        queueDepth = this["queueDepth"].asInt() ?: 0,
+        provider = this["provider"].asString(),
+        model = this["model"].asString(),
+        thinking = thinking,
+        effort = this["effort"].asString(),
+        executor = this["executor"].asString(),
+        pid = this["pid"].asInt(),
+    )
+}
+
+private fun JsonObject.toProcessModelOption(): ProcessModelOption {
+    val id = this["id"].asString() ?: return ProcessModelOption(id = "", name = "")
+    return ProcessModelOption(
+        id = id,
+        name = this["name"].asString() ?: id,
+        description = this["description"].asString(),
     )
 }
