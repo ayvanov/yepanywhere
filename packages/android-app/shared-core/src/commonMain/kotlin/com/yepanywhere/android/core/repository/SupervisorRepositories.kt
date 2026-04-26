@@ -1,6 +1,9 @@
 package com.yepanywhere.android.core.repository
 
 import com.yepanywhere.android.core.model.PendingInputRequest
+import com.yepanywhere.android.core.model.AgentMapping
+import com.yepanywhere.android.core.model.AgentProcessesPage
+import com.yepanywhere.android.core.model.AgentSession
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.ProcessControlResult
 import com.yepanywhere.android.core.model.ProcessModelOption
@@ -240,6 +243,25 @@ interface SessionsRepository {
         model: String?,
     ): ProcessModelSwitchResult {
         throw NotImplementedError("Process model switching is not implemented by this repository")
+    }
+
+    suspend fun loadAgentProcesses(includeTerminated: Boolean = true): AgentProcessesPage {
+        throw NotImplementedError("Agent process listing is not implemented by this repository")
+    }
+
+    suspend fun loadAgentMappings(
+        projectId: String,
+        sessionId: String,
+    ): List<AgentMapping> {
+        throw NotImplementedError("Agent mappings are not implemented by this repository")
+    }
+
+    suspend fun loadAgentSession(
+        projectId: String,
+        sessionId: String,
+        agentId: String,
+    ): AgentSession? {
+        throw NotImplementedError("Agent session fetch is not implemented by this repository")
     }
 }
 

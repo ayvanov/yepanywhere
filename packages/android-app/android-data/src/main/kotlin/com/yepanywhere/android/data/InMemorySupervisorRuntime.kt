@@ -2,6 +2,9 @@ package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.AgentMapping
+import com.yepanywhere.android.core.model.AgentProcessesPage
+import com.yepanywhere.android.core.model.AgentSession
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
@@ -483,6 +486,51 @@ class InMemorySupervisorRuntime(
             model: String?,
         ): ProcessModelSwitchResult {
             return ProcessModelSwitchResult(success = true, model = model)
+        }
+
+        override suspend fun loadAgentProcesses(includeTerminated: Boolean): AgentProcessesPage {
+            val processes = cache.observeSessions().first().map { session ->
+                SessionProcessInfo(
+                    id = "process-${session.id}",
+                    sessionId = session.id,
+                    projectId = session.projectId,
+                    projectName = session.projectId,
+                    sessionTitle = session.title,
+                    state = session.activity ?: if (session.status == SessionStatus.RUNNING) "in-turn" else "idle",
+                    provider = session.provider,
+                    model = session.model,
+                    executor = session.executor,
+                )
+            }
+            return AgentProcessesPage(
+                processes = processes,
+                terminatedProcesses = emptyList(),
+            )
+        }
+
+        override suspend fun loadAgentMappings(
+            projectId: String,
+            sessionId: String,
+        ): List<AgentMapping> {
+            return listOf(AgentMapping(toolUseId = "tool-$sessionId", agentId = "agent-$sessionId"))
+        }
+
+        override suspend fun loadAgentSession(
+            projectId: String,
+            sessionId: String,
+            agentId: String,
+        ): AgentSession? {
+            return AgentSession(
+                status = "completed",
+                messages = listOf(
+                    SessionMessage(
+                        id = "msg-$agentId",
+                        author = SessionMessageAuthor.ASSISTANT,
+                        body = "Subagent content for $agentId",
+                        timestampLabel = "now",
+                    ),
+                ),
+            )
         }
     }
 

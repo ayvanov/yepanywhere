@@ -11,6 +11,7 @@ import com.yepanywhere.android.core.repository.SessionsRepository
 import com.yepanywhere.android.core.usecase.ObserveInboxUseCase
 import com.yepanywhere.android.core.usecase.ObserveProjectsUseCase
 import com.yepanywhere.android.ui.InboxScreenState
+import com.yepanywhere.android.ui.AgentsScreenState
 import com.yepanywhere.android.ui.NewSessionScreenState
 import com.yepanywhere.android.ui.ProjectsScreenState
 import com.yepanywhere.android.ui.SessionsScreenState
@@ -223,6 +224,49 @@ class SessionsScreenViewModel(
     companion object {
         fun factory(sessionsRepository: SessionsRepository): ViewModelProvider.Factory {
             return sectionFactory { SessionsScreenViewModel(sessionsRepository = sessionsRepository) }
+        }
+    }
+}
+
+class AgentsScreenViewModel(
+    private val sessionsRepository: SessionsRepository,
+    scope: CoroutineScope? = null,
+) : ViewModel() {
+    private val coroutineScope = scope ?: viewModelScope
+    private val mutableUiState = MutableStateFlow(AgentsScreenState())
+    val uiState: StateFlow<AgentsScreenState> = mutableUiState.asStateFlow()
+
+    fun refresh() {
+        coroutineScope.launch {
+            mutableUiState.update { it.copy(isLoading = true, errorMessage = null) }
+            runCatching {
+                sessionsRepository.loadAgentProcesses(includeTerminated = true)
+            }.onSuccess { page ->
+                mutableUiState.update {
+                    it.copy(
+                        activeAgents = page.processes.filter { process -> process.state in activeAgentStates },
+                        idleAgents = page.processes.filterNot { process -> process.state in activeAgentStates },
+                        terminatedAgents = page.terminatedProcesses,
+                        isLoading = false,
+                        errorMessage = null,
+                    )
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = error.message ?: "Failed to load agents.",
+                    )
+                }
+            }
+        }
+    }
+
+    companion object {
+        private val activeAgentStates = setOf("in-turn", "waiting-input", "running", "active")
+
+        fun factory(sessionsRepository: SessionsRepository): ViewModelProvider.Factory {
+            return sectionFactory { AgentsScreenViewModel(sessionsRepository = sessionsRepository) }
         }
     }
 }

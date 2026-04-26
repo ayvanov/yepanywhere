@@ -2,6 +2,7 @@ package com.yepanywhere.android
 
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.AgentProcessesPage
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
@@ -10,6 +11,7 @@ import com.yepanywhere.android.core.model.NewSessionOptions
 import com.yepanywhere.android.core.model.NewSessionSettings
 import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.ProjectSummary
+import com.yepanywhere.android.core.model.SessionProcessInfo
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
@@ -215,6 +217,40 @@ class SupervisorSectionViewModelsTest {
     }
 
     @Test
+    fun agentsViewModelLoadsActiveIdleAndTerminatedAgents() = runTest {
+        val repository = FakeSessionsRepository(
+            sessions = MutableStateFlow(emptyList()),
+            timeline = MutableStateFlow(emptyTimeline()),
+            agentProcessesPage = AgentProcessesPage(
+                processes = listOf(
+                    processInfo(id = "process-active", state = "in-turn", sessionTitle = "Android agent"),
+                    processInfo(id = "process-idle", state = "idle", sessionTitle = "Idle agent"),
+                ),
+                terminatedProcesses = listOf(
+                    processInfo(id = "process-stopped", state = "stopped", sessionTitle = "Stopped agent"),
+                ),
+            ),
+        )
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = AgentsScreenViewModel(
+            sessionsRepository = repository,
+            scope = externalScope,
+        )
+        val collectionJob = externalScope.launch { viewModel.uiState.collect {} }
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(listOf("process-active"), viewModel.uiState.value.activeAgents.map { it.id })
+        assertEquals(listOf("process-idle"), viewModel.uiState.value.idleAgents.map { it.id })
+        assertEquals(listOf("process-stopped"), viewModel.uiState.value.terminatedAgents.map { it.id })
+        assertEquals(1, repository.agentProcessLoads)
+
+        collectionJob.cancel()
+        externalScope.cancel()
+    }
+
+    @Test
     fun newSessionViewModelLoadsDefaultsAndStartsDirectOrTwoPhaseSession() = runTest {
         val projects = MutableStateFlow(
             listOf(ProjectSummary(id = "project-yep", name = "Yep Anywhere")),
@@ -298,6 +334,7 @@ class SupervisorSectionViewModelsTest {
         private val timeline: MutableStateFlow<SessionTimeline>,
         private val pages: List<GlobalSessionsPage> = emptyList(),
         private val newSessionSettings: NewSessionSettings = NewSessionSettings(),
+        private val agentProcessesPage: AgentProcessesPage = AgentProcessesPage(),
     ) : SessionsRepository {
         private var pageIndex = 0
         var lastAfter: String? = null
@@ -310,6 +347,7 @@ class SupervisorSectionViewModelsTest {
         var queuedSessionId: String? = null
         var queuedPrompt: String? = null
         var savedDefaults: NewSessionDefaults? = null
+        var agentProcessLoads = 0
 
         override fun observeSessions(projectId: String?): Flow<List<SessionSummary>> = sessions
 
@@ -327,6 +365,11 @@ class SupervisorSectionViewModelsTest {
         override fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline> = timeline
 
         override suspend fun sendReply(sessionId: String, text: String) = Unit
+
+        override suspend fun loadAgentProcesses(includeTerminated: Boolean): AgentProcessesPage {
+            agentProcessLoads += 1
+            return agentProcessesPage
+        }
 
         override suspend fun getNewSessionSettings(): NewSessionSettings = newSessionSettings
 
@@ -428,6 +471,23 @@ class SupervisorSectionViewModelsTest {
             hasUnread = false,
             provider = provider,
             executor = executor,
+        )
+    }
+
+    private fun processInfo(
+        id: String,
+        state: String,
+        sessionTitle: String,
+    ): SessionProcessInfo {
+        return SessionProcessInfo(
+            id = id,
+            sessionId = "session-$id",
+            projectId = "project-yep",
+            projectName = "Yep Anywhere",
+            sessionTitle = sessionTitle,
+            state = state,
+            provider = "claude",
+            model = "sonnet",
         )
     }
 }

@@ -62,6 +62,10 @@ interface ActiveSessionCommandHandler {
     fun loadProcessModels() = Unit
 
     fun switchProcessModel(modelId: String) = Unit
+
+    fun loadAgentMappings() = Unit
+
+    fun loadAgentSession(agentId: String) = Unit
 }
 
 class ActiveSessionViewModel(
@@ -109,8 +113,19 @@ class ActiveSessionViewModel(
         projectId: String,
         sessionId: String,
     ) {
+        val changedSession = selectedSessionId != sessionId
         selectedProjectId = projectId
         selectedSessionId = sessionId
+        if (changedSession) {
+            mutableUiState.update {
+                it.copy(
+                    agentMappings = emptyList(),
+                    selectedAgentId = null,
+                    selectedAgentSession = null,
+                    agentErrorMessage = null,
+                )
+            }
+        }
         coroutineScope.launch {
             refreshSessionDetail()
         }
@@ -399,6 +414,76 @@ class ActiveSessionViewModel(
                     it.copy(
                         isSwitchingModel = false,
                         processControlErrorMessage = error.message ?: "Failed to switch model.",
+                    )
+                }
+            }
+        }
+    }
+
+    override fun loadAgentMappings() {
+        val projectId = selectedProjectId
+        val sessionId = selectedSessionId
+        if (projectId.isNullOrBlank() || sessionId.isNullOrBlank()) {
+            return
+        }
+        mutableUiState.update { it.copy(isLoadingAgentSession = true, agentErrorMessage = null) }
+        coroutineScope.launch {
+            runCatching {
+                requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                    .loadAgentMappings(projectId = projectId, sessionId = sessionId)
+            }.onSuccess { mappings ->
+                mutableUiState.update {
+                    it.copy(
+                        agentMappings = mappings,
+                        isLoadingAgentSession = false,
+                        agentErrorMessage = null,
+                    )
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        isLoadingAgentSession = false,
+                        agentErrorMessage = error.message ?: "Failed to load subagents.",
+                    )
+                }
+            }
+        }
+    }
+
+    override fun loadAgentSession(agentId: String) {
+        val projectId = selectedProjectId
+        val sessionId = selectedSessionId
+        if (projectId.isNullOrBlank() || sessionId.isNullOrBlank()) {
+            return
+        }
+        mutableUiState.update {
+            it.copy(
+                selectedAgentId = agentId,
+                isLoadingAgentSession = true,
+                agentErrorMessage = null,
+            )
+        }
+        coroutineScope.launch {
+            runCatching {
+                requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                    .loadAgentSession(
+                        projectId = projectId,
+                        sessionId = sessionId,
+                        agentId = agentId,
+                    )
+            }.onSuccess { agentSession ->
+                mutableUiState.update {
+                    it.copy(
+                        selectedAgentSession = agentSession,
+                        isLoadingAgentSession = false,
+                        agentErrorMessage = null,
+                    )
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        isLoadingAgentSession = false,
+                        agentErrorMessage = error.message ?: "Failed to load subagent session.",
                     )
                 }
             }

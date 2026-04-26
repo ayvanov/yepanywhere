@@ -66,6 +66,9 @@ class MainActivity : ComponentActivity() {
     private val sessionsViewModel: SessionsScreenViewModel by viewModels {
         appContainer.createSessionsScreenViewModelFactory()
     }
+    private val agentsViewModel: AgentsScreenViewModel by viewModels {
+        appContainer.createAgentsScreenViewModelFactory()
+    }
     private val inboxViewModel: InboxScreenViewModel by viewModels {
         appContainer.createInboxScreenViewModelFactory()
     }
@@ -91,6 +94,7 @@ class MainActivity : ComponentActivity() {
                 shellViewModel = shellViewModel,
                 projectsViewModel = projectsViewModel,
                 sessionsViewModel = sessionsViewModel,
+                agentsViewModel = agentsViewModel,
                 inboxViewModel = inboxViewModel,
                 activeSessionViewModel = activeSessionViewModel,
                 newSessionViewModel = newSessionViewModel,
@@ -141,6 +145,7 @@ private fun YepAnywhereAndroidApp(
     shellViewModel: SupervisorShellViewModel,
     projectsViewModel: ProjectsScreenViewModel,
     sessionsViewModel: SessionsScreenViewModel,
+    agentsViewModel: AgentsScreenViewModel,
     inboxViewModel: InboxScreenViewModel,
     activeSessionViewModel: ActiveSessionViewModel,
     newSessionViewModel: NewSessionViewModel,
@@ -151,6 +156,7 @@ private fun YepAnywhereAndroidApp(
     val shellState by shellViewModel.uiState.collectAsState()
     val projectsState by projectsViewModel.uiState.collectAsState()
     val sessionsState by sessionsViewModel.uiState.collectAsState()
+    val agentsState by agentsViewModel.uiState.collectAsState()
     val inboxState by inboxViewModel.uiState.collectAsState()
     val activeSessionState by activeSessionViewModel.uiState.collectAsState()
     val newSessionState by newSessionViewModel.uiState.collectAsState()
@@ -167,6 +173,11 @@ private fun YepAnywhereAndroidApp(
     LaunchedEffect(newSessionViewModel, loginState.isAuthenticated) {
         if (loginState.isAuthenticated) {
             newSessionViewModel.initialize()
+        }
+    }
+    LaunchedEffect(agentsViewModel, loginState.isAuthenticated) {
+        if (loginState.isAuthenticated) {
+            agentsViewModel.refresh()
         }
     }
     LaunchedEffect(
@@ -186,6 +197,7 @@ private fun YepAnywhereAndroidApp(
             state = shellState,
             projectsState = projectsState,
             sessionsState = sessionsState,
+            agentsState = agentsState,
             inboxState = inboxState,
             activeSessionState = activeSessionState,
             newSessionState = newSessionState,
@@ -250,6 +262,8 @@ internal fun createActiveSessionCallbacks(
         onLoadProcessInfo = handler::loadProcessInfo,
         onLoadProcessModels = handler::loadProcessModels,
         onSwitchProcessModel = handler::switchProcessModel,
+        onLoadAgentMappings = handler::loadAgentMappings,
+        onLoadAgentSession = handler::loadAgentSession,
     )
 }
 

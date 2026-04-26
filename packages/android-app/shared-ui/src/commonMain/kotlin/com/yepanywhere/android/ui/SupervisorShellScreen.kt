@@ -34,6 +34,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.yepanywhere.android.core.model.AgentMapping
+import com.yepanywhere.android.core.model.AgentSession
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.GlobalSessionFilters
@@ -110,6 +112,16 @@ data class InboxScreenState(
     val items: List<InboxItem>,
 )
 
+data class AgentsScreenState(
+    val title: String = "Agents",
+    val subtitle: String = "Active, idle, and recently stopped agents across projects.",
+    val activeAgents: List<SessionProcessInfo> = emptyList(),
+    val idleAgents: List<SessionProcessInfo> = emptyList(),
+    val terminatedAgents: List<SessionProcessInfo> = emptyList(),
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+)
+
 data class ActiveSessionScreenState(
     val title: String,
     val subtitle: String,
@@ -139,6 +151,11 @@ data class ActiveSessionScreenState(
     val isLoadingProcessInfo: Boolean = false,
     val isSwitchingModel: Boolean = false,
     val processControlErrorMessage: String? = null,
+    val agentMappings: List<AgentMapping> = emptyList(),
+    val selectedAgentId: String? = null,
+    val selectedAgentSession: AgentSession? = null,
+    val isLoadingAgentSession: Boolean = false,
+    val agentErrorMessage: String? = null,
 )
 
 data class NewSessionScreenState(
@@ -192,6 +209,8 @@ data class ActiveSessionCallbacks(
     val onLoadProcessInfo: () -> Unit = {},
     val onLoadProcessModels: () -> Unit = {},
     val onSwitchProcessModel: (String) -> Unit = {},
+    val onLoadAgentMappings: () -> Unit = {},
+    val onLoadAgentSession: (String) -> Unit = {},
 )
 
 @Composable
@@ -199,6 +218,7 @@ fun SupervisorShellScreen(
     state: SupervisorShellScreenState,
     projectsState: ProjectsScreenState,
     sessionsState: SessionsScreenState,
+    agentsState: AgentsScreenState = AgentsScreenState(),
     inboxState: InboxScreenState,
     activeSessionState: ActiveSessionScreenState,
     newSessionState: NewSessionScreenState = NewSessionScreenState(),
@@ -230,7 +250,7 @@ fun SupervisorShellScreen(
                                     text = when (section) {
                                         SupervisorShellSection.PROJECTS -> "${state.snapshot.projects.size}"
                                         SupervisorShellSection.SESSIONS -> "${state.snapshot.sessions.size}"
-                                        SupervisorShellSection.AGENTS -> "0"
+                                        SupervisorShellSection.AGENTS -> "${agentsState.activeAgents.size}"
                                         SupervisorShellSection.INBOX -> "${state.snapshot.unreadInboxCount}"
                                         SupervisorShellSection.SETTINGS -> "0"
                                         else -> "0"
@@ -284,9 +304,10 @@ fun SupervisorShellScreen(
                         onBulkMarkSessionsRead = onBulkMarkSessionsRead,
                         onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
                     )
-                    SupervisorShellSection.AGENTS -> PlaceholderSection(
-                        title = "Agents",
-                        subtitle = "Global active agents and subagent drill-down will land here.",
+                    SupervisorShellSection.AGENTS -> AgentsSection(
+                        state = agentsState,
+                        connectionStatus = state.snapshot.connectionStatus,
+                        onSessionSelected = onSessionSelected,
                     )
                     SupervisorShellSection.INBOX -> InboxSection(
                         state = inboxState,
@@ -450,6 +471,79 @@ private fun ProjectSummary.projectStatusText(): String {
         return parts.joinToString(" • ")
     }
     return if (isActive) "Active relay workspace" else "Available workspace"
+}
+
+@Composable
+private fun AgentsSection(
+    state: AgentsScreenState,
+    connectionStatus: RelayConnectionStatus,
+    onSessionSelected: (projectId: String, sessionId: String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle(title = state.title, subtitle = state.subtitle)
+        if (state.isLoading) {
+            Text(
+                text = "Loading agents...",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        state.errorMessage?.let { errorMessage ->
+            Text(
+                text = errorMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        AgentGroup(
+            title = "Active agents",
+            agents = state.activeAgents,
+            emptyState = listSectionEmptyState(connectionStatus, "active agent"),
+            onSessionSelected = onSessionSelected,
+        )
+        AgentGroup(
+            title = "Idle agents",
+            agents = state.idleAgents,
+            emptyState = null,
+            onSessionSelected = onSessionSelected,
+        )
+        AgentGroup(
+            title = "Stopped agents",
+            agents = state.terminatedAgents,
+            emptyState = null,
+            onSessionSelected = onSessionSelected,
+        )
+    }
+}
+
+@Composable
+private fun AgentGroup(
+    title: String,
+    agents: List<SessionProcessInfo>,
+    emptyState: SectionEmptyState?,
+    onSessionSelected: (projectId: String, sessionId: String) -> Unit,
+) {
+    if (agents.isEmpty() && emptyState == null) {
+        return
+    }
+    SectionList(
+        title = title,
+        subtitle = "${agents.size} agent${if (agents.size == 1) "" else "s"}",
+        items = agents,
+        emptyState = emptyState,
+    ) { process ->
+        ListCard(
+            title = process.sessionTitle ?: process.id,
+            subtitle = listOfNotNull(
+                process.projectName,
+                process.state.takeIf { it.isNotBlank() },
+                process.provider,
+                process.model,
+            ).joinToString(" • "),
+            trailing = process.queueDepth.takeIf { it > 0 }?.let { "Queue $it" },
+            onClick = { onSessionSelected(process.projectId, process.sessionId) },
+        )
+    }
 }
 
 @Composable
@@ -1044,6 +1138,11 @@ private fun ActiveSessionSection(
             )
         }
 
+        SubagentSection(
+            state = state,
+            callbacks = callbacks,
+        )
+
         SectionList(
             title = "Timeline",
             subtitle = "Current session transcript placeholder for Android UI iteration.",
@@ -1223,6 +1322,85 @@ private fun ProcessModelList(
                 Text(
                     text = if (model.id == currentModel) "${model.name} (current)" else model.name,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubagentSection(
+    state: ActiveSessionScreenState,
+    callbacks: ActiveSessionCallbacks,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "Subagents",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = "Task tool sessions linked from this transcript.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Button(
+                modifier = Modifier.testTag("agent-mappings-load"),
+                enabled = !state.isLoadingAgentSession,
+                onClick = callbacks.onLoadAgentMappings,
+            ) {
+                Text(if (state.isLoadingAgentSession) "Loading" else "Load")
+            }
+        }
+
+        state.agentErrorMessage?.let { error ->
+            Text(
+                text = error,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+
+        if (state.agentMappings.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.agentMappings.forEach { mapping ->
+                    ListCard(
+                        title = mapping.agentId,
+                        subtitle = "Tool use ${mapping.toolUseId}",
+                        trailing = if (mapping.agentId == state.selectedAgentId) "Open" else null,
+                        onClick = { callbacks.onLoadAgentSession(mapping.agentId) },
+                    )
+                    Button(
+                        modifier = Modifier.testTag("agent-session-${mapping.agentId}"),
+                        enabled = !state.isLoadingAgentSession,
+                        onClick = { callbacks.onLoadAgentSession(mapping.agentId) },
+                    ) {
+                        Text("Open ${mapping.agentId}")
+                    }
+                }
+            }
+        }
+
+        state.selectedAgentSession?.let { agentSession ->
+            SectionList(
+                title = "Agent ${state.selectedAgentId ?: ""}".trim(),
+                subtitle = agentSession.status ?: "Status unavailable",
+                items = agentSession.messages,
+                emptyState = SectionEmptyState(
+                    title = "Agent transcript is empty",
+                    body = "This subagent has no messages available yet.",
+                ),
+            ) { message ->
+                MessageCard(message)
             }
         }
     }

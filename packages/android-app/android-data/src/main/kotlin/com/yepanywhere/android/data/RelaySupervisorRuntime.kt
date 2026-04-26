@@ -1,6 +1,9 @@
 package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.cache.SessionCacheStore
+import com.yepanywhere.android.core.model.AgentMapping
+import com.yepanywhere.android.core.model.AgentProcessesPage
+import com.yepanywhere.android.core.model.AgentSession
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
@@ -669,6 +672,55 @@ class RelaySupervisorRuntime(
             return ProcessModelSwitchResult(
                 success = payload.asObject()?.get("success").asBoolean() ?: false,
                 model = payload.asObject()?.get("model").asString(),
+            )
+        }
+
+        override suspend fun loadAgentProcesses(includeTerminated: Boolean): AgentProcessesPage {
+            val path = if (includeTerminated) {
+                "/processes?includeTerminated=true"
+            } else {
+                "/processes"
+            }
+            val payload = requestObject(method = "GET", path = path)
+            return AgentProcessesPage(
+                processes = payload["processes"].asJsonArray().mapNotNull { element ->
+                    element.asObject()?.toSessionProcessInfo()
+                },
+                terminatedProcesses = payload["terminatedProcesses"].asJsonArray().mapNotNull { element ->
+                    element.asObject()?.toSessionProcessInfo()
+                },
+            )
+        }
+
+        override suspend fun loadAgentMappings(
+            projectId: String,
+            sessionId: String,
+        ): List<AgentMapping> {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestObject(
+                method = "GET",
+                path = "/projects/$projectId/sessions/$backendSessionId/agents",
+            )
+            return payload["mappings"].asJsonArray().mapNotNull { element ->
+                element.asObject()?.toAgentMapping()
+            }
+        }
+
+        override suspend fun loadAgentSession(
+            projectId: String,
+            sessionId: String,
+            agentId: String,
+        ): AgentSession? {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestObject(
+                method = "GET",
+                path = "/projects/$projectId/sessions/$backendSessionId/agents/${agentId.urlEncode()}",
+            )
+            return AgentSession(
+                messages = payload["messages"].asJsonArray().mapIndexed { index, element ->
+                    (element as? JsonObject).toSessionMessage(index)
+                },
+                status = payload["status"].asString(),
             )
         }
     }
@@ -1691,6 +1743,15 @@ private fun JsonObject.toSessionProcessInfo(): SessionProcessInfo {
         effort = this["effort"].asString(),
         executor = this["executor"].asString(),
         pid = this["pid"].asInt(),
+    )
+}
+
+private fun JsonObject.toAgentMapping(): AgentMapping? {
+    val toolUseId = this["toolUseId"].asString() ?: this["tool_use_id"].asString() ?: return null
+    val agentId = this["agentId"].asString() ?: this["agent_id"].asString() ?: return null
+    return AgentMapping(
+        toolUseId = toolUseId,
+        agentId = agentId,
     )
 }
 

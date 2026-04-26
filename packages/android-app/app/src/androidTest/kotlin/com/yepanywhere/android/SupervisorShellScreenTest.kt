@@ -15,6 +15,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.yepanywhere.android.core.model.AgentMapping
+import com.yepanywhere.android.core.model.AgentSession
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.MessageContentBlock
@@ -34,6 +36,7 @@ import com.yepanywhere.android.core.model.SessionUploadProgress
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.ui.ActiveSessionCallbacks
 import com.yepanywhere.android.ui.ActiveSessionScreenState
+import com.yepanywhere.android.ui.AgentsScreenState
 import com.yepanywhere.android.ui.InboxScreenState
 import com.yepanywhere.android.ui.ProjectsScreenState
 import com.yepanywhere.android.ui.SessionsScreenState
@@ -463,6 +466,112 @@ class SupervisorShellScreenTest {
     }
 
     @Test
+    fun agentsSectionRendersActiveAgentsAndDispatchesSessionSelection() {
+        var selectedSession: Pair<String, String>? = null
+
+        renderShell(
+            shellState = shellState(selectedSection = SupervisorShellSection.AGENTS),
+            agentsState = AgentsScreenState(
+                activeAgents = listOf(
+                    SessionProcessInfo(
+                        id = "process-1",
+                        sessionId = "session-android",
+                        projectId = "project-1",
+                        projectName = "Yep Anywhere",
+                        sessionTitle = "Android supervisor",
+                        state = "in-turn",
+                        provider = "claude",
+                        model = "sonnet",
+                    ),
+                ),
+                idleAgents = listOf(
+                    SessionProcessInfo(
+                        id = "process-2",
+                        sessionId = "session-idle",
+                        projectId = "project-1",
+                        projectName = "Yep Anywhere",
+                        sessionTitle = "Idle supervisor",
+                        state = "idle",
+                    ),
+                ),
+                terminatedAgents = listOf(
+                    SessionProcessInfo(
+                        id = "process-3",
+                        sessionId = "session-stopped",
+                        projectId = "project-1",
+                        projectName = "Yep Anywhere",
+                        sessionTitle = "Stopped supervisor",
+                        state = "stopped",
+                    ),
+                ),
+            ),
+            onSessionSelected = { projectId, sessionId ->
+                selectedSession = projectId to sessionId
+            },
+        )
+
+        composeRule.onNodeWithText("Active agents")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Android supervisor")
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("project-1" to "session-android", selectedSession)
+        }
+    }
+
+    @Test
+    fun activeSessionSubagentMappingsLoadAndRenderAgentSession() {
+        var mappingsLoaded = 0
+        var loadedAgentId: String? = null
+
+        renderShell(
+            activeSessionState = activeSessionState(
+                pendingRequests = emptyList(),
+                timeline = timeline(),
+            ).copy(
+                agentMappings = listOf(AgentMapping(toolUseId = "tool-1", agentId = "agent-1")),
+                selectedAgentId = "agent-1",
+                selectedAgentSession = AgentSession(
+                    status = "completed",
+                    messages = listOf(
+                        SessionMessage(
+                            id = "agent-msg-1",
+                            author = SessionMessageAuthor.ASSISTANT,
+                            body = "Subagent completed renderer work",
+                            timestampLabel = "12:30",
+                            blocks = listOf(MessageContentBlock.Task("Renderer task", "Subagent completed renderer work")),
+                        ),
+                    ),
+                ),
+            ),
+            callbacks = ActiveSessionCallbacks(
+                onSendReply = {},
+                onApproveRequest = {},
+                onDenyRequest = { _, _ -> },
+                onAnswerQuestion = { _, _ -> },
+                onLoadAgentMappings = { mappingsLoaded += 1 },
+                onLoadAgentSession = { loadedAgentId = it },
+            ),
+        )
+
+        scrollShellTo("agent-mappings-load")
+        composeRule.onNodeWithTag("agent-mappings-load")
+            .performClick()
+        scrollShellTo("agent-session-agent-1")
+        composeRule.onNodeWithTag("agent-session-agent-1")
+            .performClick()
+        scrollShellTo("message-block-agent-msg-1-0")
+        composeRule.onNodeWithTag("message-block-agent-msg-1-0")
+            .assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            assertEquals(1, mappingsLoaded)
+            assertEquals("agent-1", loadedAgentId)
+        }
+    }
+
+    @Test
     fun navigationSelectionDispatchesRequestedSection() {
         val selectedSections = mutableListOf<SupervisorShellSection>()
 
@@ -667,6 +776,7 @@ class SupervisorShellScreenTest {
         sessionsState: SessionsScreenState = sessionsState(),
         inboxState: InboxScreenState = inboxState(),
         activeSessionState: ActiveSessionScreenState = activeSessionState(),
+        agentsState: AgentsScreenState = AgentsScreenState(),
         callbacks: ActiveSessionCallbacks = ActiveSessionCallbacks(
             onSendReply = {},
             onApproveRequest = {},
@@ -675,6 +785,7 @@ class SupervisorShellScreenTest {
         ),
         onSectionSelected: (SupervisorShellSection) -> Unit = {},
         onProjectSelected: (String) -> Unit = {},
+        onSessionSelected: (projectId: String, sessionId: String) -> Unit = { _, _ -> },
         onLogout: () -> Unit = {},
     ) {
         composeRule.setContent {
@@ -682,11 +793,13 @@ class SupervisorShellScreenTest {
                 state = shellState,
                 projectsState = projectsState,
                 sessionsState = sessionsState,
+                agentsState = agentsState,
                 inboxState = inboxState,
                 activeSessionState = activeSessionState,
                 activeSessionCallbacks = callbacks,
                 onSectionSelected = onSectionSelected,
                 onProjectSelected = onProjectSelected,
+                onSessionSelected = onSessionSelected,
                 onLogout = onLogout,
             )
         }

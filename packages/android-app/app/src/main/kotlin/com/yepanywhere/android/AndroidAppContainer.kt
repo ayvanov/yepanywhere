@@ -85,6 +85,10 @@ class AndroidAppContainer(
         return SessionsScreenViewModel.factory(androidDataLayer.sessionsRepository)
     }
 
+    fun createAgentsScreenViewModelFactory(): ViewModelProvider.Factory {
+        return AgentsScreenViewModel.factory(androidDataLayer.sessionsRepository)
+    }
+
     fun createNewSessionViewModelFactory(): ViewModelProvider.Factory {
         return NewSessionViewModel.factory(
             projectsRepository = androidDataLayer.projectsRepository,

@@ -631,6 +631,48 @@ class RelaySupervisorRuntimeTest {
     }
 
     @Test
+    fun agentsPageAndSubagentFetchUseBackendEndpoints() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        val processes = runtime.sessionsRepository.loadAgentProcesses(includeTerminated = true)
+        val mappings = runtime.sessionsRepository.loadAgentMappings(
+            projectId = "project-1",
+            sessionId = "session-detail",
+        )
+        val agentSession = runtime.sessionsRepository.loadAgentSession(
+            projectId = "project-1",
+            sessionId = "session-detail",
+            agentId = "agent-1",
+        )
+
+        assertEquals(listOf("process-1"), processes.processes.map { it.id })
+        assertEquals(listOf("process-old"), processes.terminatedProcesses.map { it.id })
+        assertEquals("agent-1", mappings.single().agentId)
+        assertEquals("tool-1", mappings.single().toolUseId)
+        assertEquals("completed", agentSession?.status)
+        assertEquals(listOf("agent-msg-1"), agentSession?.messages?.map { it.id })
+        assertEquals("GET", gateway.recordedRequest("GET", "/processes?includeTerminated=true").method)
+        assertEquals(
+            "GET",
+            gateway.recordedRequest("GET", "/projects/project-1/sessions/session-detail/agents").method,
+        )
+        assertEquals(
+            "GET",
+            gateway.recordedRequest("GET", "/projects/project-1/sessions/session-detail/agents/agent-1").method,
+        )
+    }
+
+    @Test
     fun approveRequestHitsBackendInputEndpoint() = runTest(UnconfinedTestDispatcher()) {
         val gateway = FakeRelayRealtimeGateway()
         val runtime = RelaySupervisorRuntime(
@@ -1229,6 +1271,68 @@ class RelaySupervisorRuntimeTest {
             "/processes/process-1/model" -> jsonObject(
                 "success" to JsonPrimitive(true),
                 "model" to JsonPrimitive("opus"),
+            )
+            "/processes?includeTerminated=true" -> jsonObject(
+                "processes" to JsonArray(
+                    listOf(
+                        jsonObject(
+                            "id" to JsonPrimitive("process-1"),
+                            "sessionId" to JsonPrimitive("session-detail"),
+                            "projectId" to JsonPrimitive("project-1"),
+                            "projectName" to JsonPrimitive("Yep Anywhere"),
+                            "projectPath" to JsonPrimitive("D:/projects/yepanywhere"),
+                            "sessionTitle" to JsonPrimitive("Android supervisor"),
+                            "state" to JsonPrimitive("in-turn"),
+                            "startedAt" to JsonPrimitive("2026-04-26T12:00:00Z"),
+                            "queueDepth" to JsonPrimitive(1),
+                            "provider" to JsonPrimitive("claude"),
+                            "model" to JsonPrimitive("sonnet"),
+                            "executor" to JsonPrimitive("local"),
+                        ),
+                    ),
+                ),
+                "terminatedProcesses" to JsonArray(
+                    listOf(
+                        jsonObject(
+                            "id" to JsonPrimitive("process-old"),
+                            "sessionId" to JsonPrimitive("session-old"),
+                            "projectId" to JsonPrimitive("project-1"),
+                            "projectName" to JsonPrimitive("Yep Anywhere"),
+                            "sessionTitle" to JsonPrimitive("Old Android supervisor"),
+                            "state" to JsonPrimitive("stopped"),
+                        ),
+                    ),
+                ),
+            )
+            "/projects/project-1/sessions/session-detail/agents" -> jsonObject(
+                "mappings" to JsonArray(
+                    listOf(
+                        jsonObject(
+                            "toolUseId" to JsonPrimitive("tool-1"),
+                            "agentId" to JsonPrimitive("agent-1"),
+                        ),
+                    ),
+                ),
+            )
+            "/projects/project-1/sessions/session-detail/agents/agent-1" -> jsonObject(
+                "status" to JsonPrimitive("completed"),
+                "messages" to JsonArray(
+                    listOf(
+                        jsonObject(
+                            "id" to JsonPrimitive("agent-msg-1"),
+                            "type" to JsonPrimitive("assistant"),
+                            "timestamp" to JsonPrimitive("2026-04-26T12:30:00Z"),
+                            "content" to JsonArray(
+                                listOf(
+                                    jsonObject(
+                                        "type" to JsonPrimitive("text"),
+                                        "text" to JsonPrimitive("Subagent completed Android renderer work"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
             )
             else -> JsonObject(emptyMap())
         }

@@ -313,6 +313,21 @@ data class SessionProcessInfo(
     val pid: Int? = null,
 )
 
+data class AgentProcessesPage(
+    val processes: List<SessionProcessInfo> = emptyList(),
+    val terminatedProcesses: List<SessionProcessInfo> = emptyList(),
+)
+
+data class AgentMapping(
+    val toolUseId: String,
+    val agentId: String,
+)
+
+data class AgentSession(
+    val messages: List<SessionMessage>,
+    val status: String? = null,
+)
+
 data class ProcessModelOption(
     val id: String,
     val name: String,
