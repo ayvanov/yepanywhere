@@ -1,5 +1,8 @@
 Read and follow `CLAUDE.md` for repo context and instructions.
 
+For Android app testing, take local testing information from
+`packages/android-app/local.properties`.
+
 ## Landing the Plane (Session Completion)
 
 After completing your session, offer proactively, briefly, a suggestion
