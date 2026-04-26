@@ -165,6 +165,21 @@ class InMemorySupervisorRuntime(
             connectionState.value = RelayConnectionStatus.SYNCING
             connectionState.value = RelayConnectionStatus.CONNECTED
         }
+
+        override suspend fun getProject(projectId: String): ProjectSummary {
+            return cache.observeProjects().first().first { it.id == projectId }
+        }
+
+        override suspend fun addProject(path: String): ProjectSummary {
+            val name = path.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\').ifBlank { path }
+            val project = ProjectSummary(
+                id = "project-${name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')}",
+                name = name,
+                path = path,
+            )
+            cache.storeProjects(cache.observeProjects().first().filterNot { it.id == project.id } + project)
+            return project
+        }
     }
 
     override val inboxRepository: InboxRepository = object : InboxRepository {

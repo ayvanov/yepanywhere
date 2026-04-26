@@ -34,8 +34,17 @@ data class RelaySession(
 data class ProjectSummary(
     val id: String,
     val name: String,
+    val path: String? = null,
+    val activeOwnedCount: Int = 0,
+    val activeExternalCount: Int = 0,
+    val thinkingCount: Int = 0,
+    val needsAttentionCount: Int = 0,
+    val latestActivityAt: String? = null,
     val isActive: Boolean = false,
-)
+) {
+    val activeCount: Int
+        get() = activeOwnedCount + activeExternalCount
+}
 
 data class SessionSummary(
     val id: String,

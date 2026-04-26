@@ -52,6 +52,14 @@ interface ProjectsRepository {
     fun observeProjects(): Flow<List<ProjectSummary>>
 
     suspend fun refreshProjects()
+
+    suspend fun getProject(projectId: String): ProjectSummary {
+        throw NotImplementedError("Project detail is not implemented by this repository")
+    }
+
+    suspend fun addProject(path: String): ProjectSummary {
+        throw NotImplementedError("Add project is not implemented by this repository")
+    }
 }
 
 interface InboxRepository {

@@ -221,6 +221,39 @@ class RelaySupervisorRuntime(
                 refreshProjectsInternal()
             }
         }
+
+        override suspend fun getProject(projectId: String): ProjectSummary {
+            val payload = requestObject(
+                method = "GET",
+                path = "/projects/$projectId",
+            )
+            val project = payload["project"].asObject()?.toProjectSummary()
+                ?: throw IllegalStateException("missing_project")
+            cache.storeProjects(
+                sortProjectsForDisplay(
+                    cache.observeProjects().first().filterNot { it.id == project.id } + project,
+                ),
+            )
+            return project
+        }
+
+        override suspend fun addProject(path: String): ProjectSummary {
+            val payload = requestObject(
+                method = "POST",
+                path = "/projects",
+                body = buildJsonObject {
+                    put("path", path)
+                },
+            )
+            val project = payload["project"].asObject()?.toProjectSummary()
+                ?: throw IllegalStateException("missing_project")
+            cache.storeProjects(
+                sortProjectsForDisplay(
+                    cache.observeProjects().first().filterNot { it.id == project.id } + project,
+                ),
+            )
+            return project
+        }
     }
 
     override val sessionsRepository: SessionsRepository = object : SessionsRepository {
@@ -480,17 +513,9 @@ class RelaySupervisorRuntime(
         )
         val projects = payload["projects"].asJsonArray().mapNotNull { element ->
             val project = element as? JsonObject ?: return@mapNotNull null
-            val id = project["id"].asString() ?: return@mapNotNull null
-            val name = project["name"].asString() ?: return@mapNotNull null
-            val activeOwnedCount = project["activeOwnedCount"].asInt() ?: 0
-            val activeExternalCount = project["activeExternalCount"].asInt() ?: 0
-            ProjectSummary(
-                id = id,
-                name = name,
-                isActive = activeOwnedCount + activeExternalCount > 0,
-            )
+            project.toProjectSummary()
         }
-        cache.storeProjects(projects)
+        cache.storeProjects(sortProjectsForDisplay(projects))
     }
 
     private suspend fun refreshSessionsInternal(projectId: String?) {
@@ -813,6 +838,29 @@ private fun JsonElement?.asInt(): Int? {
 
 private fun JsonElement?.asBoolean(): Boolean? {
     return (this as? JsonPrimitive)?.booleanOrNull
+}
+
+private fun JsonObject.toProjectSummary(): ProjectSummary {
+    val activeOwnedCount = this["activeOwnedCount"].asInt() ?: 0
+    val activeExternalCount = this["activeExternalCount"].asInt() ?: 0
+    return ProjectSummary(
+        id = this["id"].asString() ?: throw IllegalStateException("missing_project_id"),
+        name = this["name"].asString() ?: "Untitled project",
+        path = this["path"].asString(),
+        activeOwnedCount = activeOwnedCount,
+        activeExternalCount = activeExternalCount,
+        thinkingCount = this["thinkingCount"].asInt() ?: 0,
+        needsAttentionCount = this["needsAttentionCount"].asInt() ?: 0,
+        latestActivityAt = this["latestActivityAt"].asString() ?: this["updatedAt"].asString(),
+        isActive = activeOwnedCount + activeExternalCount > 0,
+    )
+}
+
+private fun sortProjectsForDisplay(projects: List<ProjectSummary>): List<ProjectSummary> {
+    return projects.sortedWith(
+        compareByDescending<ProjectSummary> { it.needsAttentionCount }
+            .thenByDescending { it.latestActivityAt.orEmpty() },
+    )
 }
 
 private fun JsonObject?.toSessionMessage(index: Int): SessionMessage {

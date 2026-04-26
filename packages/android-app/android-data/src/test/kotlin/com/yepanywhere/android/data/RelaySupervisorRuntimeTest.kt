@@ -9,6 +9,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonArray
@@ -126,8 +127,11 @@ class RelaySupervisorRuntimeTest {
         )
 
         val snapshot = runtime.shellState.value
-        assertEquals(1, snapshot.projects.size)
+        assertEquals(3, snapshot.projects.size)
         assertEquals("project-1", snapshot.projects.first().id)
+        assertEquals(1, snapshot.projects.first().activeCount)
+        assertEquals(1, snapshot.projects.first().thinkingCount)
+        assertEquals(2, snapshot.projects.first().needsAttentionCount)
         assertEquals(1, snapshot.sessions.size)
         assertEquals("session-1", snapshot.sessions.first().id)
         assertTrue(snapshot.sessions.none { it.id == "archived-session" })
@@ -136,6 +140,72 @@ class RelaySupervisorRuntimeTest {
         assertTrue(snapshot.timeline.messages.any { it.body.contains("real backend message") })
         assertEquals("request-1", snapshot.pendingRequests.first().id)
         assertEquals(RelayConnectionStatus.CONNECTED, snapshot.connectionStatus)
+    }
+
+    @Test
+    fun projectsAreSortedByAttentionThenRecentActivity() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        assertEquals(
+            listOf("project-1", "project-2", "project-3"),
+            runtime.shellState.value.projects.map { it.id },
+        )
+    }
+
+    @Test
+    fun addProjectPostsPathAndCachesReturnedProject() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        val added = runtime.projectsRepository.addProject("~/code/new-project")
+
+        assertEquals("project-added", added.id)
+        assertTrue(runtime.projectsRepository.observeProjects().first().any { it.id == "project-added" })
+        assertTrue(
+            gateway.requests.any { request ->
+                request.method == "POST" && request.path == "/projects"
+            },
+        )
+    }
+
+    @Test
+    fun getProjectFetchesProjectDetailById() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        val project = runtime.projectsRepository.getProject("project-1")
+
+        assertEquals("Yep Anywhere", project.name)
+        assertEquals("/repo/yepanywhere", project.path)
     }
 
     @Test
@@ -179,6 +249,27 @@ class RelaySupervisorRuntimeTest {
             ),
             request.body,
         )
+    }
+
+    private fun successfulHandshake(): suspend (String, String?, String, StoredRelaySession?) -> SecureRelayAuthHandshakeResult {
+        return { username, _, relayUrl, _ ->
+            SecureRelayAuthHandshakeResult(
+                session = RelaySession(
+                    username = username,
+                    relayUrl = relayUrl,
+                    sessionId = "relay-session-1",
+                ),
+                persistedSession = StoredRelaySession(
+                    wsUrl = relayUrl,
+                    username = username,
+                    sessionId = "relay-session-1",
+                    sessionKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                ),
+                clearedStoredSession = false,
+                transportNonce = null,
+                resumed = false,
+            )
+        }
     }
 
     @Test
@@ -367,6 +458,20 @@ class RelaySupervisorRuntimeTest {
             body: JsonElement?,
         ): JsonElement {
             requests += RecordedRequest(method = method, path = path, body = body)
+            if (method == "POST" && path == "/projects") {
+                return jsonObject(
+                    "project" to jsonObject(
+                        "id" to JsonPrimitive("project-added"),
+                        "name" to JsonPrimitive("New Project"),
+                        "path" to JsonPrimitive("/home/demo/code/new-project"),
+                        "activeOwnedCount" to JsonPrimitive(0),
+                        "activeExternalCount" to JsonPrimitive(0),
+                        "thinkingCount" to JsonPrimitive(0),
+                        "needsAttentionCount" to JsonPrimitive(0),
+                        "latestActivityAt" to JsonPrimitive("2026-04-25T12:00:00Z"),
+                    ),
+                )
+            }
             return when (path) {
                 "/projects" -> jsonObject(
                     "projects" to JsonArray(
@@ -374,10 +479,45 @@ class RelaySupervisorRuntimeTest {
                             jsonObject(
                                 "id" to JsonPrimitive("project-1"),
                                 "name" to JsonPrimitive("Yep Anywhere"),
+                                "path" to JsonPrimitive("/repo/yepanywhere"),
                                 "activeOwnedCount" to JsonPrimitive(1),
                                 "activeExternalCount" to JsonPrimitive(0),
+                                "thinkingCount" to JsonPrimitive(1),
+                                "needsAttentionCount" to JsonPrimitive(2),
+                                "latestActivityAt" to JsonPrimitive("2026-04-23T12:00:00Z"),
+                            ),
+                            jsonObject(
+                                "id" to JsonPrimitive("project-2"),
+                                "name" to JsonPrimitive("Relay Backend"),
+                                "activeOwnedCount" to JsonPrimitive(0),
+                                "activeExternalCount" to JsonPrimitive(1),
+                                "thinkingCount" to JsonPrimitive(0),
+                                "needsAttentionCount" to JsonPrimitive(0),
+                                "latestActivityAt" to JsonPrimitive("2026-04-24T12:00:00Z"),
+                            ),
+                            jsonObject(
+                                "id" to JsonPrimitive("project-3"),
+                                "name" to JsonPrimitive("Archive"),
+                                "activeOwnedCount" to JsonPrimitive(0),
+                                "activeExternalCount" to JsonPrimitive(0),
+                                "thinkingCount" to JsonPrimitive(0),
+                                "needsAttentionCount" to JsonPrimitive(0),
+                                "latestActivityAt" to JsonPrimitive("2026-04-20T12:00:00Z"),
                             ),
                         ),
+                    ),
+                )
+
+                "/projects/project-1" -> jsonObject(
+                    "project" to jsonObject(
+                        "id" to JsonPrimitive("project-1"),
+                        "name" to JsonPrimitive("Yep Anywhere"),
+                        "path" to JsonPrimitive("/repo/yepanywhere"),
+                        "activeOwnedCount" to JsonPrimitive(1),
+                        "activeExternalCount" to JsonPrimitive(0),
+                        "thinkingCount" to JsonPrimitive(1),
+                        "needsAttentionCount" to JsonPrimitive(2),
+                        "latestActivityAt" to JsonPrimitive("2026-04-23T12:00:00Z"),
                     ),
                 )
 

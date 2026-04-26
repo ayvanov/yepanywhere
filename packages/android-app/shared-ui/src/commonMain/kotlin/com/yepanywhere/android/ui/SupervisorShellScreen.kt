@@ -330,10 +330,22 @@ private fun ProjectsSection(
     ) { project ->
         ListCard(
             title = project.name,
-            subtitle = if (project.isActive) "Active relay workspace" else "Available workspace",
+            subtitle = project.projectStatusText(),
             onClick = { onProjectSelected(project.id) },
         )
     }
+}
+
+private fun ProjectSummary.projectStatusText(): String {
+    val parts = buildList {
+        if (activeCount > 0) add("Active $activeCount")
+        if (thinkingCount > 0) add("Thinking $thinkingCount")
+        if (needsAttentionCount > 0) add("Attention $needsAttentionCount")
+    }
+    if (parts.isNotEmpty()) {
+        return parts.joinToString(" • ")
+    }
+    return if (isActive) "Active relay workspace" else "Available workspace"
 }
 
 @Composable
