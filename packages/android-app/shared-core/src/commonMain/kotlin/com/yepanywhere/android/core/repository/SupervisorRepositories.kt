@@ -230,6 +230,10 @@ interface ApprovalsRepository {
 
     suspend fun approve(requestId: String)
 
+    suspend fun approveAcceptEdits(requestId: String) {
+        approve(requestId)
+    }
+
     suspend fun deny(
         requestId: String,
         feedback: String? = null,

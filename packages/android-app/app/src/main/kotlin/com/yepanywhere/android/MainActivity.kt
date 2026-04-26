@@ -235,6 +235,7 @@ internal fun createActiveSessionCallbacks(
     return ActiveSessionCallbacks(
         onSendReply = handler::sendReply,
         onApproveRequest = handler::approve,
+        onApproveAcceptEditsRequest = handler::approveAcceptEdits,
         onDenyRequest = handler::deny,
         onAnswerQuestion = handler::answerQuestion,
         onRefresh = { handler.refreshSessionDetail() },

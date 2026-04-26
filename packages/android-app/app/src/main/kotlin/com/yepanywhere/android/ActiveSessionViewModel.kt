@@ -27,6 +27,8 @@ interface ActiveSessionCommandHandler {
 
     fun approve(requestId: String)
 
+    fun approveAcceptEdits(requestId: String) = Unit
+
     fun deny(
         requestId: String,
         feedback: String? = null,
@@ -327,6 +329,13 @@ class ActiveSessionViewModel(
     override fun approve(requestId: String) {
         coroutineScope.launch {
             approveRequestUseCase(requestId)
+        }
+    }
+
+    override fun approveAcceptEdits(requestId: String) {
+        coroutineScope.launch {
+            approveRequestUseCase(requestId = requestId, acceptEdits = true)
+            mutableUiState.update { it.copy(permissionMode = "acceptEdits") }
         }
     }
 

@@ -466,6 +466,13 @@ class InMemorySupervisorRuntime(
             )
         }
 
+        override suspend fun approveAcceptEdits(requestId: String) {
+            resolveRequest(
+                requestId = requestId,
+                resolutionLabel = "Approved with accept edits on Android",
+            )
+        }
+
         override suspend fun deny(
             requestId: String,
             feedback: String?,

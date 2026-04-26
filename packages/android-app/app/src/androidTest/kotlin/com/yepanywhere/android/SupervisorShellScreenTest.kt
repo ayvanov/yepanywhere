@@ -111,6 +111,35 @@ class SupervisorShellScreenTest {
     }
 
     @Test
+    fun approvalRequestApproveAcceptEditsDispatchesRequestId() {
+        var approvedAcceptEditsRequestId: String? = null
+
+        renderShell(
+            activeSessionState = activeSessionState(
+                pendingRequests = listOf(approvalRequest()),
+            ),
+            shellState = shellState(
+                pendingRequests = listOf(approvalRequest()),
+            ),
+            callbacks = ActiveSessionCallbacks(
+                onSendReply = {},
+                onApproveRequest = {},
+                onApproveAcceptEditsRequest = { approvedAcceptEditsRequestId = it },
+                onDenyRequest = { _, _ -> },
+                onAnswerQuestion = { _, _ -> },
+            ),
+        )
+
+        scrollShellTo("pending-request-approve-accept-edits-request-approval")
+        composeRule.onNodeWithTag("pending-request-approve-accept-edits-request-approval")
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("request-approval", approvedAcceptEditsRequestId)
+        }
+    }
+
+    @Test
     fun approvalRequestDenySendsTrimmedFeedbackAndClearsDraft() {
         var deniedRequestId: String? = null
         var denialFeedback: String? = null
@@ -247,6 +276,8 @@ class SupervisorShellScreenTest {
 
         scrollShellTo("pending-request-approve-request-approval")
         composeRule.onNodeWithTag("pending-request-approve-request-approval")
+            .assertIsNotEnabled()
+        composeRule.onNodeWithTag("pending-request-approve-accept-edits-request-approval")
             .assertIsNotEnabled()
         composeRule.onNodeWithTag("pending-request-deny-request-approval")
             .assertIsNotEnabled()

@@ -653,6 +653,15 @@ class RelaySupervisorRuntime(
             respondToRequest(requestId = requestId, response = "approve", feedback = null, answer = null)
         }
 
+        override suspend fun approveAcceptEdits(requestId: String) {
+            respondToRequest(
+                requestId = requestId,
+                response = "approve_accept_edits",
+                feedback = null,
+                answer = null,
+            )
+        }
+
         override suspend fun deny(
             requestId: String,
             feedback: String?,

@@ -641,6 +641,32 @@ class RelaySupervisorRuntimeTest {
         )
     }
 
+    @Test
+    fun approveAcceptEditsRequestUsesWebInputResponseShape() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        runtime.approvalsRepository.approveAcceptEdits("request-1")
+
+        val request = gateway.recordedRequest("POST", "/sessions/session-1/input")
+        assertEquals(
+            jsonObject(
+                "requestId" to JsonPrimitive("request-1"),
+                "response" to JsonPrimitive("approve_accept_edits"),
+            ),
+            request.body,
+        )
+    }
+
     private fun successfulHandshake(): suspend (String, String?, String, StoredRelaySession?) -> SecureRelayAuthHandshakeResult {
         return { username, _, relayUrl, _ ->
             SecureRelayAuthHandshakeResult(

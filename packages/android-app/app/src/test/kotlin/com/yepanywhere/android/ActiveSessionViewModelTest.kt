@@ -208,6 +208,7 @@ class ActiveSessionViewModelTest {
 
         viewModel.sendReply("Reply from Android")
         viewModel.approve("request-1")
+        viewModel.approveAcceptEdits("request-accept-edits")
         viewModel.deny(
             requestId = "request-2",
             feedback = "Need another option",
@@ -221,8 +222,10 @@ class ActiveSessionViewModelTest {
 
         assertEquals(listOf("session-android-shell|Reply from Android"), sessionsRepository.sentReplies)
         assertEquals(listOf("request-1"), approvalsRepository.approvedRequestIds)
+        assertEquals(listOf("request-accept-edits"), approvalsRepository.approvedAcceptEditsRequestIds)
         assertEquals(listOf("request-2|Need another option"), approvalsRepository.deniedRequests)
         assertEquals(listOf("request-3|Use cache-first."), approvalsRepository.answeredRequests)
+        assertEquals("acceptEdits", viewModel.uiState.value.permissionMode)
 
         externalScope.cancel()
     }
@@ -382,6 +385,7 @@ class ActiveSessionViewModelTest {
         private val pendingRequests: MutableStateFlow<List<PendingInputRequest>>,
     ) : ApprovalsRepository {
         val approvedRequestIds = mutableListOf<String>()
+        val approvedAcceptEditsRequestIds = mutableListOf<String>()
         val deniedRequests = mutableListOf<String>()
         val answeredRequests = mutableListOf<String>()
 
@@ -389,6 +393,10 @@ class ActiveSessionViewModelTest {
 
         override suspend fun approve(requestId: String) {
             approvedRequestIds += requestId
+        }
+
+        override suspend fun approveAcceptEdits(requestId: String) {
+            approvedAcceptEditsRequestIds += requestId
         }
 
         override suspend fun deny(requestId: String, feedback: String?) {

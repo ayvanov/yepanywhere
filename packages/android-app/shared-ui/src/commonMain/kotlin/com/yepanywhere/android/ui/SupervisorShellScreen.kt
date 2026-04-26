@@ -170,6 +170,7 @@ data class NewSessionCallbacks(
 data class ActiveSessionCallbacks(
     val onSendReply: (String) -> Unit,
     val onApproveRequest: (String) -> Unit,
+    val onApproveAcceptEditsRequest: (String) -> Unit = {},
     val onDenyRequest: (requestId: String, feedback: String?) -> Unit,
     val onAnswerQuestion: (requestId: String, answer: String) -> Unit,
     val onRefresh: () -> Unit = {},
@@ -1445,6 +1446,16 @@ private fun PendingRequestCard(
                             },
                         ) {
                             Text("Approve")
+                        }
+                        Button(
+                            modifier = Modifier.testTag("pending-request-approve-accept-edits-${request.id}"),
+                            enabled = actionsEnabled,
+                            onClick = {
+                                callbacks.onApproveAcceptEditsRequest(request.id)
+                                responseDraft = ""
+                            },
+                        ) {
+                            Text("Accept edits")
                         }
                     }
                 }

@@ -50,8 +50,15 @@ class ObserveInboxUseCase(
 class ApproveRequestUseCase(
     private val approvalsRepository: ApprovalsRepository,
 ) {
-    suspend operator fun invoke(requestId: String) {
-        approvalsRepository.approve(requestId)
+    suspend operator fun invoke(
+        requestId: String,
+        acceptEdits: Boolean = false,
+    ) {
+        if (acceptEdits) {
+            approvalsRepository.approveAcceptEdits(requestId)
+        } else {
+            approvalsRepository.approve(requestId)
+        }
     }
 }
 

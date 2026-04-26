@@ -30,8 +30,9 @@ class AndroidDataLayerTest {
     fun loginDoesNotWaitForInitialBackendRefresh() = runTest(UnconfinedTestDispatcher()) {
         val requestStarted = CompletableDeferred<Unit>()
         val releaseRequests = CompletableDeferred<Unit>()
-        val dataLayer = AndroidDataLayer(
-            relayRealtimeGatewayOverride = SlowRelayRealtimeGateway(
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = SlowRelayRealtimeGateway(
                 requestStarted = requestStarted,
                 releaseRequests = releaseRequests,
             ),
@@ -53,6 +54,9 @@ class AndroidDataLayerTest {
                     resumed = false,
                 )
             },
+        )
+        val dataLayer = AndroidDataLayer(
+            runtimeOverride = runtime,
         )
 
         val loginJob = backgroundScope.async {
@@ -92,9 +96,9 @@ class AndroidDataLayerTest {
                 ),
             ),
         )
-        val dataLayer = AndroidDataLayer(
-            relayAuthStateStore = stateStore,
-            relayRealtimeGatewayOverride = SlowRelayRealtimeGateway(
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = SlowRelayRealtimeGateway(
                 requestStarted = requestStarted,
                 releaseRequests = releaseRequests,
             ),
@@ -117,6 +121,10 @@ class AndroidDataLayerTest {
                     resumed = true,
                 )
             },
+        )
+        val dataLayer = AndroidDataLayer(
+            runtimeOverride = runtime,
+            relayAuthStateStore = stateStore,
         )
 
         val reconnectJob = backgroundScope.async {
