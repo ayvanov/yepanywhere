@@ -6,6 +6,10 @@ import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.NewSessionDefaults
+import com.yepanywhere.android.core.model.NewSessionOptions
+import com.yepanywhere.android.core.model.NewSessionSettings
+import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
@@ -409,6 +413,87 @@ class RelaySupervisorRuntime(
             )
             return payload.asObject()?.get("accepted").asBoolean()
                 ?: payload.asObject()?.get("ok").asBoolean()
+                ?: true
+        }
+
+        override suspend fun getNewSessionSettings(): NewSessionSettings {
+            val payload = requestObject(
+                method = "GET",
+                path = "/settings",
+            )
+            val settings = payload["settings"].asObject()
+            return NewSessionSettings(
+                defaults = settings?.get("newSessionDefaults").asObject().toNewSessionDefaults(),
+                remoteExecutors = settings?.get("remoteExecutors").asJsonArray()
+                    .mapNotNull { it.asString() },
+            )
+        }
+
+        override suspend fun saveNewSessionDefaults(defaults: NewSessionDefaults): Boolean {
+            val response = requestJson(
+                method = "PUT",
+                path = "/settings",
+                body = buildJsonObject {
+                    put("newSessionDefaults", defaults.toJsonObject())
+                },
+            )
+            return response.asObject()?.get("settings").asObject() != null ||
+                response.asObject()?.get("updated").asBoolean() == true
+        }
+
+        override suspend fun startSession(
+            projectId: String,
+            prompt: String,
+            options: NewSessionOptions,
+        ): NewSessionStartResult {
+            val payload = requestObject(
+                method = "POST",
+                path = "/projects/$projectId/sessions",
+                body = buildNewSessionBody(
+                    prompt = prompt,
+                    options = options,
+                    includePrompt = true,
+                    includeQueueOnlyFields = false,
+                ),
+            )
+            return payload.toNewSessionStartResult()
+        }
+
+        override suspend fun createSession(
+            projectId: String,
+            options: NewSessionOptions,
+        ): NewSessionStartResult {
+            val payload = requestObject(
+                method = "POST",
+                path = "/projects/$projectId/sessions/create",
+                body = buildNewSessionBody(
+                    prompt = null,
+                    options = options,
+                    includePrompt = false,
+                    includeQueueOnlyFields = false,
+                ),
+            )
+            return payload.toNewSessionStartResult()
+        }
+
+        override suspend fun queueMessage(
+            sessionId: String,
+            prompt: String,
+            options: NewSessionOptions,
+        ): Boolean {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestJson(
+                method = "POST",
+                path = "/sessions/$backendSessionId/messages",
+                body = buildNewSessionBody(
+                    prompt = prompt,
+                    options = options,
+                    includePrompt = true,
+                    includeQueueOnlyFields = true,
+                ),
+            )
+            return payload.asObject()?.get("queued").asBoolean()
+                ?: payload.asObject()?.get("accepted").asBoolean()
                 ?: true
         }
     }
@@ -1030,6 +1115,57 @@ private fun JsonObject.toGlobalSessionStats(): GlobalSessionStats {
         unread = this["unread"].asInt() ?: 0,
         starred = this["starred"].asInt() ?: 0,
         archived = this["archived"].asInt() ?: 0,
+    )
+}
+
+private fun JsonObject?.toNewSessionDefaults(): NewSessionDefaults {
+    val defaults = this ?: return NewSessionDefaults()
+    return NewSessionDefaults(
+        provider = defaults["provider"].asString(),
+        model = defaults["model"].asString(),
+        permissionMode = defaults["permissionMode"].asString(),
+        thinking = defaults["thinking"].asObject()?.get("type").asString()
+            ?: defaults["thinking"].asString(),
+        executor = defaults["executor"].asString(),
+    )
+}
+
+private fun NewSessionDefaults.toJsonObject(): JsonObject {
+    return buildJsonObject {
+        provider?.let { put("provider", it) }
+        model?.let { put("model", it) }
+        permissionMode?.let { put("permissionMode", it) }
+        thinking?.let { put("thinking", buildJsonObject { put("type", it) }) }
+        executor?.let { put("executor", it) }
+    }
+}
+
+private fun buildNewSessionBody(
+    prompt: String?,
+    options: NewSessionOptions,
+    includePrompt: Boolean,
+    includeQueueOnlyFields: Boolean,
+): JsonObject {
+    return buildJsonObject {
+        if (includePrompt && prompt != null) {
+            put("message", prompt)
+        }
+        options.permissionMode?.let { put("mode", it) }
+        if (!includeQueueOnlyFields) {
+            options.model?.let { put("model", it) }
+            options.provider?.let { put("provider", it) }
+            options.executor?.let { put("executor", it) }
+        }
+        options.thinking?.let { put("thinking", buildJsonObject { put("type", it) }) }
+    }
+}
+
+private fun JsonObject.toNewSessionStartResult(): NewSessionStartResult {
+    return NewSessionStartResult(
+        sessionId = this["sessionId"].asString() ?: throw IllegalStateException("missing_session_id"),
+        processId = this["processId"].asString(),
+        permissionMode = this["permissionMode"].asString(),
+        modeVersion = this["modeVersion"].asInt() ?: 0,
     )
 }
 

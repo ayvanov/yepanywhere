@@ -2,6 +2,8 @@ package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.GlobalSessionFilters
+import com.yepanywhere.android.core.model.NewSessionDefaults
+import com.yepanywhere.android.core.model.NewSessionOptions
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.SessionMetadataUpdate
@@ -318,6 +320,117 @@ class RelaySupervisorRuntimeTest {
     }
 
     @Test
+    fun newSessionSettingsRoundTripThroughServerSettings() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        val settings = runtime.sessionsRepository.getNewSessionSettings()
+        runtime.sessionsRepository.saveNewSessionDefaults(
+            NewSessionDefaults(
+                provider = "codex",
+                model = "gpt-5.2",
+                permissionMode = "acceptEdits",
+                thinking = "enabled",
+                executor = "build-host",
+            ),
+        )
+
+        assertEquals(listOf("local", "build-host"), settings.remoteExecutors)
+        assertEquals("claude", settings.defaults.provider)
+        assertEquals("sonnet", settings.defaults.model)
+        assertEquals(
+            jsonObject(
+                "newSessionDefaults" to jsonObject(
+                    "provider" to JsonPrimitive("codex"),
+                    "model" to JsonPrimitive("gpt-5.2"),
+                    "permissionMode" to JsonPrimitive("acceptEdits"),
+                    "thinking" to jsonObject("type" to JsonPrimitive("enabled")),
+                    "executor" to JsonPrimitive("build-host"),
+                ),
+            ),
+            gateway.recordedRequest("PUT", "/settings").body,
+        )
+    }
+
+    @Test
+    fun startAndTwoPhaseNewSessionHitBackendWithSelectedOptions() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+        val options = NewSessionOptions(
+            provider = "claude",
+            model = "opus",
+            permissionMode = "bypassPermissions",
+            thinking = "enabled",
+            executor = "build-host",
+        )
+
+        val direct = runtime.sessionsRepository.startSession(
+            projectId = "project-1",
+            prompt = "Build Android parity",
+            options = options,
+        )
+        val created = runtime.sessionsRepository.createSession(
+            projectId = "project-1",
+            options = options,
+        )
+        runtime.sessionsRepository.queueMessage(
+            sessionId = created.sessionId,
+            prompt = "Upload-free follow-up",
+            options = options,
+        )
+
+        assertEquals("new-session-direct", direct.sessionId)
+        assertEquals("new-session-created", created.sessionId)
+        assertEquals(
+            jsonObject(
+                "message" to JsonPrimitive("Build Android parity"),
+                "mode" to JsonPrimitive("bypassPermissions"),
+                "model" to JsonPrimitive("opus"),
+                "thinking" to jsonObject("type" to JsonPrimitive("enabled")),
+                "provider" to JsonPrimitive("claude"),
+                "executor" to JsonPrimitive("build-host"),
+            ),
+            gateway.recordedRequest("POST", "/projects/project-1/sessions").body,
+        )
+        assertEquals(
+            jsonObject(
+                "mode" to JsonPrimitive("bypassPermissions"),
+                "model" to JsonPrimitive("opus"),
+                "thinking" to jsonObject("type" to JsonPrimitive("enabled")),
+                "provider" to JsonPrimitive("claude"),
+                "executor" to JsonPrimitive("build-host"),
+            ),
+            gateway.recordedRequest("POST", "/projects/project-1/sessions/create").body,
+        )
+        assertEquals(
+            jsonObject(
+                "message" to JsonPrimitive("Upload-free follow-up"),
+                "mode" to JsonPrimitive("bypassPermissions"),
+                "thinking" to jsonObject("type" to JsonPrimitive("enabled")),
+            ),
+            gateway.recordedRequest("POST", "/sessions/new-session-created/messages").body,
+        )
+    }
+
+    @Test
     fun approveRequestHitsBackendInputEndpoint() = runTest(UnconfinedTestDispatcher()) {
         val gateway = FakeRelayRealtimeGateway()
         val runtime = RelaySupervisorRuntime(
@@ -595,6 +708,42 @@ class RelaySupervisorRuntimeTest {
             }
             if (method == "DELETE" && path == "/sessions/global-1/mark-seen") {
                 return jsonObject("accepted" to JsonPrimitive(true))
+            }
+            if (method == "GET" && path == "/settings") {
+                return jsonObject(
+                    "settings" to jsonObject(
+                        "remoteExecutors" to JsonArray(listOf(JsonPrimitive("local"), JsonPrimitive("build-host"))),
+                        "newSessionDefaults" to jsonObject(
+                            "provider" to JsonPrimitive("claude"),
+                            "model" to JsonPrimitive("sonnet"),
+                            "permissionMode" to JsonPrimitive("default"),
+                            "thinking" to jsonObject("type" to JsonPrimitive("disabled")),
+                            "executor" to JsonPrimitive("local"),
+                        ),
+                    ),
+                )
+            }
+            if (method == "PUT" && path == "/settings") {
+                return jsonObject("settings" to JsonObject(emptyMap()))
+            }
+            if (method == "POST" && path == "/projects/project-1/sessions") {
+                return jsonObject(
+                    "sessionId" to JsonPrimitive("new-session-direct"),
+                    "processId" to JsonPrimitive("process-direct"),
+                    "permissionMode" to JsonPrimitive("bypassPermissions"),
+                    "modeVersion" to JsonPrimitive(1),
+                )
+            }
+            if (method == "POST" && path == "/projects/project-1/sessions/create") {
+                return jsonObject(
+                    "sessionId" to JsonPrimitive("new-session-created"),
+                    "processId" to JsonPrimitive("process-created"),
+                    "permissionMode" to JsonPrimitive("bypassPermissions"),
+                    "modeVersion" to JsonPrimitive(1),
+                )
+            }
+            if (method == "POST" && path == "/sessions/new-session-created/messages") {
+                return jsonObject("queued" to JsonPrimitive(true))
             }
             return when (path) {
                 "/projects" -> jsonObject(

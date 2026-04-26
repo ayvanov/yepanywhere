@@ -94,6 +94,34 @@ data class SessionMetadataUpdate(
     val starred: Boolean? = null,
 )
 
+data class NewSessionOptions(
+    val provider: String? = null,
+    val model: String? = null,
+    val permissionMode: String? = null,
+    val thinking: String? = null,
+    val executor: String? = null,
+)
+
+data class NewSessionDefaults(
+    val provider: String? = null,
+    val model: String? = null,
+    val permissionMode: String? = null,
+    val thinking: String? = null,
+    val executor: String? = null,
+)
+
+data class NewSessionSettings(
+    val defaults: NewSessionDefaults = NewSessionDefaults(),
+    val remoteExecutors: List<String> = emptyList(),
+)
+
+data class NewSessionStartResult(
+    val sessionId: String,
+    val processId: String? = null,
+    val permissionMode: String? = null,
+    val modeVersion: Int = 0,
+)
+
 data class SessionMessage(
     val id: String,
     val author: SessionMessageAuthor,

@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.yepanywhere.android.ui.ActiveSessionCallbacks
 import com.yepanywhere.android.ui.AndroidAppTheme
+import com.yepanywhere.android.ui.NewSessionCallbacks
 import com.yepanywhere.android.ui.SupervisorShellScreen
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -60,6 +61,9 @@ class MainActivity : ComponentActivity() {
     private val activeSessionViewModel: ActiveSessionViewModel by viewModels {
         appContainer.createActiveSessionViewModelFactory()
     }
+    private val newSessionViewModel: NewSessionViewModel by viewModels {
+        appContainer.createNewSessionViewModelFactory()
+    }
     private val relayLoginViewModel: RelayLoginViewModel by viewModels {
         appContainer.createRelayLoginViewModelFactory()
     }
@@ -78,6 +82,7 @@ class MainActivity : ComponentActivity() {
                 sessionsViewModel = sessionsViewModel,
                 inboxViewModel = inboxViewModel,
                 activeSessionViewModel = activeSessionViewModel,
+                newSessionViewModel = newSessionViewModel,
                 relayLoginViewModel = relayLoginViewModel,
             )
         }
@@ -126,6 +131,7 @@ private fun YepAnywhereAndroidApp(
     sessionsViewModel: SessionsScreenViewModel,
     inboxViewModel: InboxScreenViewModel,
     activeSessionViewModel: ActiveSessionViewModel,
+    newSessionViewModel: NewSessionViewModel,
     relayLoginViewModel: RelayLoginViewModel,
 ) {
     val loginState by relayLoginViewModel.uiState.collectAsState()
@@ -134,12 +140,21 @@ private fun YepAnywhereAndroidApp(
     val sessionsState by sessionsViewModel.uiState.collectAsState()
     val inboxState by inboxViewModel.uiState.collectAsState()
     val activeSessionState by activeSessionViewModel.uiState.collectAsState()
+    val newSessionState by newSessionViewModel.uiState.collectAsState()
     val activeSessionCallbacks = remember(activeSessionViewModel) {
         createActiveSessionCallbacks(activeSessionViewModel)
+    }
+    val newSessionCallbacks = remember(newSessionViewModel) {
+        createNewSessionCallbacks(newSessionViewModel)
     }
 
     LaunchedEffect(relayLoginViewModel) {
         relayLoginViewModel.initialize()
+    }
+    LaunchedEffect(newSessionViewModel, loginState.isAuthenticated) {
+        if (loginState.isAuthenticated) {
+            newSessionViewModel.initialize()
+        }
     }
 
     if (loginState.isAuthenticated) {
@@ -149,7 +164,9 @@ private fun YepAnywhereAndroidApp(
             sessionsState = sessionsState,
             inboxState = inboxState,
             activeSessionState = activeSessionState,
+            newSessionState = newSessionState,
             activeSessionCallbacks = activeSessionCallbacks,
+            newSessionCallbacks = newSessionCallbacks,
             onSectionSelected = shellViewModel::selectSection,
             onProjectSelected = { projectId ->
                 shellViewModel.selectProject(projectId)
@@ -193,6 +210,21 @@ internal fun createActiveSessionCallbacks(handler: ActiveSessionCommandHandler):
         onApproveRequest = handler::approve,
         onDenyRequest = handler::deny,
         onAnswerQuestion = handler::answerQuestion,
+    )
+}
+
+internal fun createNewSessionCallbacks(viewModel: NewSessionViewModel): NewSessionCallbacks {
+    return NewSessionCallbacks(
+        onProjectChanged = viewModel::updateProject,
+        onProviderChanged = viewModel::updateProvider,
+        onModelChanged = viewModel::updateModel,
+        onPermissionModeChanged = viewModel::updatePermissionMode,
+        onThinkingChanged = viewModel::updateThinking,
+        onExecutorChanged = viewModel::updateExecutor,
+        onPromptChanged = viewModel::updatePrompt,
+        onStartDirect = viewModel::startDirect,
+        onStartTwoPhase = viewModel::startTwoPhase,
+        onSaveDefaults = viewModel::saveDefaults,
     )
 }
 

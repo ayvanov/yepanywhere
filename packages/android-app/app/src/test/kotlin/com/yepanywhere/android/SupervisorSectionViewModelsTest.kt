@@ -5,6 +5,10 @@ import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
+import com.yepanywhere.android.core.model.NewSessionDefaults
+import com.yepanywhere.android.core.model.NewSessionOptions
+import com.yepanywhere.android.core.model.NewSessionSettings
+import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
@@ -210,6 +214,77 @@ class SupervisorSectionViewModelsTest {
         externalScope.cancel()
     }
 
+    @Test
+    fun newSessionViewModelLoadsDefaultsAndStartsDirectOrTwoPhaseSession() = runTest {
+        val projects = MutableStateFlow(
+            listOf(ProjectSummary(id = "project-yep", name = "Yep Anywhere")),
+        )
+        val sessions = MutableStateFlow(emptyList<SessionSummary>())
+        val repository = FakeSessionsRepository(
+            sessions = sessions,
+            timeline = MutableStateFlow(emptyTimeline()),
+            newSessionSettings = NewSessionSettings(
+                defaults = NewSessionDefaults(
+                    provider = "claude",
+                    model = "sonnet",
+                    permissionMode = "default",
+                    thinking = "disabled",
+                    executor = "local",
+                ),
+                remoteExecutors = listOf("local", "build-host"),
+            ),
+        )
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = NewSessionViewModel(
+            projectsRepository = FakeProjectsRepository(projects),
+            sessionsRepository = repository,
+            scope = externalScope,
+        )
+        val collectionJob = externalScope.launch { viewModel.uiState.collect {} }
+
+        viewModel.initialize()
+        advanceUntilIdle()
+
+        assertEquals("project-yep", viewModel.uiState.value.projectId)
+        assertEquals("claude", viewModel.uiState.value.provider)
+        assertEquals("sonnet", viewModel.uiState.value.model)
+        assertEquals(listOf("local", "build-host"), viewModel.uiState.value.executorOptions)
+
+        viewModel.updatePrompt("Start Android work")
+        viewModel.updatePermissionMode("bypassPermissions")
+        viewModel.updateThinking("enabled")
+        viewModel.startDirect()
+        advanceUntilIdle()
+
+        assertEquals("direct-session", viewModel.uiState.value.startedSessionId)
+        assertEquals("Start Android work", repository.directStartPrompt)
+        assertEquals("bypassPermissions", repository.directStartOptions?.permissionMode)
+
+        viewModel.updatePrompt("Two phase prompt")
+        viewModel.startTwoPhase()
+        advanceUntilIdle()
+
+        assertEquals("created-session", repository.queuedSessionId)
+        assertEquals("Two phase prompt", repository.queuedPrompt)
+
+        viewModel.saveDefaults()
+        advanceUntilIdle()
+
+        assertEquals(
+            NewSessionDefaults(
+                provider = "claude",
+                model = "sonnet",
+                permissionMode = "bypassPermissions",
+                thinking = "enabled",
+                executor = "local",
+            ),
+            repository.savedDefaults,
+        )
+
+        collectionJob.cancel()
+        externalScope.cancel()
+    }
+
     private class FakeProjectsRepository(
         private val projects: MutableStateFlow<List<ProjectSummary>>,
     ) : ProjectsRepository {
@@ -222,6 +297,7 @@ class SupervisorSectionViewModelsTest {
         private val sessions: MutableStateFlow<List<SessionSummary>>,
         private val timeline: MutableStateFlow<SessionTimeline>,
         private val pages: List<GlobalSessionsPage> = emptyList(),
+        private val newSessionSettings: NewSessionSettings = NewSessionSettings(),
     ) : SessionsRepository {
         private var pageIndex = 0
         var lastAfter: String? = null
@@ -229,6 +305,11 @@ class SupervisorSectionViewModelsTest {
         val starred = mutableSetOf<String>()
         val read = mutableSetOf<String>()
         val unread = mutableSetOf<String>()
+        var directStartPrompt: String? = null
+        var directStartOptions: NewSessionOptions? = null
+        var queuedSessionId: String? = null
+        var queuedPrompt: String? = null
+        var savedDefaults: NewSessionDefaults? = null
 
         override fun observeSessions(projectId: String?): Flow<List<SessionSummary>> = sessions
 
@@ -246,6 +327,50 @@ class SupervisorSectionViewModelsTest {
         override fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline> = timeline
 
         override suspend fun sendReply(sessionId: String, text: String) = Unit
+
+        override suspend fun getNewSessionSettings(): NewSessionSettings = newSessionSettings
+
+        override suspend fun saveNewSessionDefaults(defaults: NewSessionDefaults): Boolean {
+            savedDefaults = defaults
+            return true
+        }
+
+        override suspend fun startSession(
+            projectId: String,
+            prompt: String,
+            options: NewSessionOptions,
+        ): NewSessionStartResult {
+            directStartPrompt = prompt
+            directStartOptions = options
+            return NewSessionStartResult(
+                sessionId = "direct-session",
+                processId = "process-direct",
+                permissionMode = options.permissionMode ?: "default",
+                modeVersion = 1,
+            )
+        }
+
+        override suspend fun createSession(
+            projectId: String,
+            options: NewSessionOptions,
+        ): NewSessionStartResult {
+            return NewSessionStartResult(
+                sessionId = "created-session",
+                processId = "process-created",
+                permissionMode = options.permissionMode ?: "default",
+                modeVersion = 1,
+            )
+        }
+
+        override suspend fun queueMessage(
+            sessionId: String,
+            prompt: String,
+            options: NewSessionOptions,
+        ): Boolean {
+            queuedSessionId = sessionId
+            queuedPrompt = prompt
+            return true
+        }
 
         override suspend fun bulkArchive(sessionIds: Set<String>, archived: Boolean) {
             if (archived) {

@@ -85,6 +85,13 @@ class AndroidAppContainer(
         return SessionsScreenViewModel.factory(androidDataLayer.sessionsRepository)
     }
 
+    fun createNewSessionViewModelFactory(): ViewModelProvider.Factory {
+        return NewSessionViewModel.factory(
+            projectsRepository = androidDataLayer.projectsRepository,
+            sessionsRepository = androidDataLayer.sessionsRepository,
+        )
+    }
+
     fun createInboxScreenViewModelFactory(): ViewModelProvider.Factory {
         return InboxScreenViewModel.factory(observeInboxUseCase)
     }

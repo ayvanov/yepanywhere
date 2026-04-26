@@ -5,6 +5,10 @@ import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
+import com.yepanywhere.android.core.model.NewSessionDefaults
+import com.yepanywhere.android.core.model.NewSessionOptions
+import com.yepanywhere.android.core.model.NewSessionSettings
+import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
@@ -78,6 +82,7 @@ class InMemorySupervisorRuntime(
     private val cache = InMemorySessionCacheStore(initialSnapshot)
     private val storedSession = MutableStateFlow<RelaySession?>(null)
     private val storedSecureSession = MutableStateFlow<StoredRelaySession?>(null)
+    private val newSessionDefaults = MutableStateFlow(NewSessionDefaults())
     private val connectionState = MutableStateFlow(initialSnapshot.connectionStatus)
     private val inboxInvalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private val localSupervisorPushPayloads = MutableSharedFlow<SupervisorPushPayload>(extraBufferCapacity = 64)
@@ -325,6 +330,65 @@ class InMemorySupervisorRuntime(
                     if (session.id == sessionId) session.copy(hasUnread = true) else session
                 },
             )
+            return true
+        }
+
+        override suspend fun getNewSessionSettings(): NewSessionSettings {
+            return NewSessionSettings(
+                defaults = newSessionDefaults.value,
+                remoteExecutors = listOf("local"),
+            )
+        }
+
+        override suspend fun saveNewSessionDefaults(defaults: NewSessionDefaults): Boolean {
+            newSessionDefaults.value = defaults
+            return true
+        }
+
+        override suspend fun startSession(
+            projectId: String,
+            prompt: String,
+            options: NewSessionOptions,
+        ): NewSessionStartResult {
+            val sessionId = "session-${projectId}-${cache.observeSessions().first().size + 1}"
+            cache.storeSessions(
+                cache.observeSessions().first() + SessionSummary(
+                    id = sessionId,
+                    projectId = projectId,
+                    title = prompt.take(48).ifBlank { "New session" },
+                    status = SessionStatus.RUNNING,
+                    updatedLabel = "just now",
+                    hasUnread = false,
+                    provider = options.provider,
+                    model = options.model,
+                    executor = options.executor,
+                ),
+            )
+            return NewSessionStartResult(
+                sessionId = sessionId,
+                processId = "process-$sessionId",
+                permissionMode = options.permissionMode,
+                modeVersion = 1,
+            )
+        }
+
+        override suspend fun createSession(
+            projectId: String,
+            options: NewSessionOptions,
+        ): NewSessionStartResult {
+            return startSession(
+                projectId = projectId,
+                prompt = "New session",
+                options = options,
+            )
+        }
+
+        override suspend fun queueMessage(
+            sessionId: String,
+            prompt: String,
+            options: NewSessionOptions,
+        ): Boolean {
+            sendReply(sessionId, prompt)
             return true
         }
     }

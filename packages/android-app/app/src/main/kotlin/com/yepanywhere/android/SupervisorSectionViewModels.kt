@@ -4,10 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yepanywhere.android.core.model.GlobalSessionFilters
+import com.yepanywhere.android.core.model.NewSessionDefaults
+import com.yepanywhere.android.core.model.NewSessionOptions
+import com.yepanywhere.android.core.repository.ProjectsRepository
 import com.yepanywhere.android.core.repository.SessionsRepository
 import com.yepanywhere.android.core.usecase.ObserveInboxUseCase
 import com.yepanywhere.android.core.usecase.ObserveProjectsUseCase
 import com.yepanywhere.android.ui.InboxScreenState
+import com.yepanywhere.android.ui.NewSessionScreenState
 import com.yepanywhere.android.ui.ProjectsScreenState
 import com.yepanywhere.android.ui.SessionsScreenState
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +20,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -251,6 +256,137 @@ class InboxScreenViewModel(
             return sectionFactory { InboxScreenViewModel(observeInboxUseCase = observeInboxUseCase) }
         }
     }
+}
+
+class NewSessionViewModel(
+    private val projectsRepository: ProjectsRepository,
+    private val sessionsRepository: SessionsRepository,
+    scope: CoroutineScope? = null,
+) : ViewModel() {
+    private val coroutineScope = scope ?: viewModelScope
+    private val mutableUiState = MutableStateFlow(NewSessionScreenState())
+    val uiState: StateFlow<NewSessionScreenState> = mutableUiState.asStateFlow()
+
+    fun initialize() {
+        coroutineScope.launch {
+            val projects = projectsRepository.observeProjects().first()
+            val settings = sessionsRepository.getNewSessionSettings()
+            val defaults = settings.defaults
+            mutableUiState.update { state ->
+                state.copy(
+                    projects = projects,
+                    projectId = state.projectId ?: projects.firstOrNull()?.id,
+                    provider = defaults.provider.orEmpty(),
+                    model = defaults.model.orEmpty(),
+                    permissionMode = defaults.permissionMode.orEmpty(),
+                    thinking = defaults.thinking.orEmpty(),
+                    executor = defaults.executor.orEmpty(),
+                    executorOptions = settings.remoteExecutors,
+                )
+            }
+        }
+    }
+
+    fun updateProject(projectId: String) = update { it.copy(projectId = projectId) }
+    fun updateProvider(provider: String) = update { it.copy(provider = provider) }
+    fun updateModel(model: String) = update { it.copy(model = model) }
+    fun updatePermissionMode(permissionMode: String) = update { it.copy(permissionMode = permissionMode) }
+    fun updateThinking(thinking: String) = update { it.copy(thinking = thinking) }
+    fun updateExecutor(executor: String) = update { it.copy(executor = executor) }
+    fun updatePrompt(prompt: String) = update { it.copy(prompt = prompt) }
+
+    fun startDirect() {
+        coroutineScope.launch {
+            submit(twoPhase = false)
+        }
+    }
+
+    fun startTwoPhase() {
+        coroutineScope.launch {
+            submit(twoPhase = true)
+        }
+    }
+
+    fun saveDefaults() {
+        coroutineScope.launch {
+            val state = mutableUiState.value
+            sessionsRepository.saveNewSessionDefaults(
+                NewSessionDefaults(
+                    provider = state.provider.blankToNull(),
+                    model = state.model.blankToNull(),
+                    permissionMode = state.permissionMode.blankToNull(),
+                    thinking = state.thinking.blankToNull(),
+                    executor = state.executor.blankToNull(),
+                ),
+            )
+        }
+    }
+
+    private suspend fun submit(twoPhase: Boolean) {
+        val state = mutableUiState.value
+        val projectId = state.projectId
+        val prompt = state.prompt.trim()
+        if (projectId.isNullOrBlank() || prompt.isBlank()) {
+            mutableUiState.update {
+                it.copy(errorMessage = "Choose a project and enter a prompt.")
+            }
+            return
+        }
+        mutableUiState.update { it.copy(isSubmitting = true, errorMessage = null) }
+        val options = state.toNewSessionOptions()
+        runCatching {
+            if (twoPhase) {
+                val created = sessionsRepository.createSession(projectId, options)
+                sessionsRepository.queueMessage(created.sessionId, prompt, options)
+                created
+            } else {
+                sessionsRepository.startSession(projectId, prompt, options)
+            }
+        }.onSuccess { result ->
+            mutableUiState.update {
+                it.copy(
+                    isSubmitting = false,
+                    startedSessionId = result.sessionId,
+                    errorMessage = null,
+                )
+            }
+        }.onFailure { error ->
+            mutableUiState.update {
+                it.copy(
+                    isSubmitting = false,
+                    errorMessage = error.message ?: "Failed to start session.",
+                )
+            }
+        }
+    }
+
+    private fun update(transform: (NewSessionScreenState) -> NewSessionScreenState) {
+        mutableUiState.update(transform)
+    }
+
+    companion object {
+        fun factory(
+            projectsRepository: ProjectsRepository,
+            sessionsRepository: SessionsRepository,
+        ): ViewModelProvider.Factory {
+            return sectionFactory {
+                NewSessionViewModel(
+                    projectsRepository = projectsRepository,
+                    sessionsRepository = sessionsRepository,
+                )
+            }
+        }
+    }
+}
+
+private fun NewSessionScreenState.toNewSessionOptions(): NewSessionOptions {
+    return NewSessionOptions(
+        provider = provider.blankToNull(),
+        model = model.blankToNull(),
+        permissionMode = permissionMode.blankToNull(),
+        thinking = thinking.blankToNull(),
+        executor = executor.blankToNull(),
+    )
 }
 
 private inline fun <reified T : ViewModel> sectionFactory(

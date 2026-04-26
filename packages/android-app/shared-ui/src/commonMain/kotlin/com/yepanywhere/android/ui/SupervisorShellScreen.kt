@@ -108,6 +108,39 @@ data class ActiveSessionScreenState(
     val pendingRequests: List<PendingInputRequest>,
 )
 
+data class NewSessionScreenState(
+    val title: String = "New session",
+    val subtitle: String = "Start a session with provider, model, permission, thinking, and executor settings.",
+    val projects: List<ProjectSummary> = emptyList(),
+    val projectId: String? = null,
+    val provider: String = "",
+    val model: String = "",
+    val permissionMode: String = "",
+    val thinking: String = "",
+    val executor: String = "",
+    val prompt: String = "",
+    val providerOptions: List<String> = listOf("claude", "codex", "gemini", "opencode"),
+    val permissionModeOptions: List<String> = listOf("default", "acceptEdits", "bypassPermissions", "plan"),
+    val thinkingOptions: List<String> = listOf("disabled", "enabled"),
+    val executorOptions: List<String> = emptyList(),
+    val isSubmitting: Boolean = false,
+    val startedSessionId: String? = null,
+    val errorMessage: String? = null,
+)
+
+data class NewSessionCallbacks(
+    val onProjectChanged: (String) -> Unit = {},
+    val onProviderChanged: (String) -> Unit = {},
+    val onModelChanged: (String) -> Unit = {},
+    val onPermissionModeChanged: (String) -> Unit = {},
+    val onThinkingChanged: (String) -> Unit = {},
+    val onExecutorChanged: (String) -> Unit = {},
+    val onPromptChanged: (String) -> Unit = {},
+    val onStartDirect: () -> Unit = {},
+    val onStartTwoPhase: () -> Unit = {},
+    val onSaveDefaults: () -> Unit = {},
+)
+
 data class ActiveSessionCallbacks(
     val onSendReply: (String) -> Unit,
     val onApproveRequest: (String) -> Unit,
@@ -122,7 +155,9 @@ fun SupervisorShellScreen(
     sessionsState: SessionsScreenState,
     inboxState: InboxScreenState,
     activeSessionState: ActiveSessionScreenState,
+    newSessionState: NewSessionScreenState = NewSessionScreenState(),
     activeSessionCallbacks: ActiveSessionCallbacks,
+    newSessionCallbacks: NewSessionCallbacks = NewSessionCallbacks(),
     onSectionSelected: (SupervisorShellSection) -> Unit,
     onProjectSelected: (String) -> Unit,
     onSessionSelected: (projectId: String, sessionId: String) -> Unit = { _, _ -> },
@@ -219,9 +254,9 @@ fun SupervisorShellScreen(
                         state = activeSessionState,
                         callbacks = activeSessionCallbacks,
                     )
-                    SupervisorShellSection.NEW_SESSION -> PlaceholderSection(
-                        title = "New session",
-                        subtitle = "Project, provider, model, permission, executor, and prompt controls.",
+                    SupervisorShellSection.NEW_SESSION -> NewSessionSection(
+                        state = newSessionState,
+                        callbacks = newSessionCallbacks,
                     )
                     SupervisorShellSection.FILE -> PlaceholderSection(
                         title = state.selectedFilePath ?: "File",
@@ -473,6 +508,188 @@ private fun SessionSummary.sessionTrailing(selectedSessionIds: Set<String>): Str
         hasUnread -> "Unread"
         isArchived -> "Archived"
         else -> null
+    }
+}
+
+@Composable
+private fun NewSessionSection(
+    state: NewSessionScreenState,
+    callbacks: NewSessionCallbacks,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle(
+            title = state.title,
+            subtitle = state.subtitle,
+        )
+        SelectorGroup(
+            label = "Project",
+            options = state.projects.map { it.id to it.name },
+            selectedValue = state.projectId,
+            onSelected = callbacks.onProjectChanged,
+        )
+        NewSessionInputCard(state = state, callbacks = callbacks)
+        if (state.startedSessionId != null) {
+            Text(
+                text = "Started ${state.startedSessionId}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        state.errorMessage?.let { errorMessage ->
+            Text(
+                text = errorMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectorGroup(
+    label: String,
+    options: List<Pair<String, String>>,
+    selectedValue: String?,
+    onSelected: (String) -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (options.isEmpty()) {
+                Text(
+                    text = "No options",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                options.forEach { (value, labelText) ->
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onSelected(value) },
+                    ) {
+                        Text(if (value == selectedValue) "$labelText selected" else labelText)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NewSessionInputCard(
+    state: NewSessionScreenState,
+    callbacks: NewSessionCallbacks,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("new-session-form"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            OutlinedTextField(
+                value = state.provider,
+                onValueChange = callbacks.onProviderChanged,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Provider") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = state.model,
+                onValueChange = callbacks.onModelChanged,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Model") },
+                singleLine = true,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = state.permissionMode,
+                    onValueChange = callbacks.onPermissionModeChanged,
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Permission") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = state.thinking,
+                    onValueChange = callbacks.onThinkingChanged,
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Thinking") },
+                    singleLine = true,
+                )
+            }
+            OutlinedTextField(
+                value = state.executor,
+                onValueChange = callbacks.onExecutorChanged,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Executor") },
+                singleLine = true,
+            )
+            if (state.executorOptions.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    state.executorOptions.take(2).forEach { executor ->
+                        Button(
+                            modifier = Modifier.weight(1f),
+                            onClick = { callbacks.onExecutorChanged(executor) },
+                        ) {
+                            Text(executor)
+                        }
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = state.prompt,
+                onValueChange = callbacks.onPromptChanged,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("new-session-prompt"),
+                label = { Text("Prompt") },
+                minLines = 4,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.isSubmitting,
+                    onClick = callbacks.onSaveDefaults,
+                ) {
+                    Text("Save defaults")
+                }
+                Button(
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.isSubmitting,
+                    onClick = callbacks.onStartTwoPhase,
+                ) {
+                    Text("Create + queue")
+                }
+            }
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("new-session-start"),
+                enabled = !state.isSubmitting,
+                onClick = callbacks.onStartDirect,
+            ) {
+                Text(if (state.isSubmitting) "Starting" else "Start")
+            }
+        }
     }
 }
 

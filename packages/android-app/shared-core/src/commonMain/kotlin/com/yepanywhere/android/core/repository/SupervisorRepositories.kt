@@ -4,6 +4,10 @@ import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionsPage
+import com.yepanywhere.android.core.model.NewSessionDefaults
+import com.yepanywhere.android.core.model.NewSessionOptions
+import com.yepanywhere.android.core.model.NewSessionSettings
+import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.InboxItem
@@ -132,6 +136,37 @@ interface SessionsRepository {
         sessionIds.forEach { sessionId ->
             markSessionUnread(sessionId)
         }
+    }
+
+    suspend fun getNewSessionSettings(): NewSessionSettings {
+        throw NotImplementedError("New session settings are not implemented by this repository")
+    }
+
+    suspend fun saveNewSessionDefaults(defaults: NewSessionDefaults): Boolean {
+        throw NotImplementedError("New session defaults are not implemented by this repository")
+    }
+
+    suspend fun startSession(
+        projectId: String,
+        prompt: String,
+        options: NewSessionOptions = NewSessionOptions(),
+    ): NewSessionStartResult {
+        throw NotImplementedError("New session start is not implemented by this repository")
+    }
+
+    suspend fun createSession(
+        projectId: String,
+        options: NewSessionOptions = NewSessionOptions(),
+    ): NewSessionStartResult {
+        throw NotImplementedError("Session creation is not implemented by this repository")
+    }
+
+    suspend fun queueMessage(
+        sessionId: String,
+        prompt: String,
+        options: NewSessionOptions = NewSessionOptions(),
+    ): Boolean {
+        throw NotImplementedError("Session message queueing is not implemented by this repository")
     }
 }
 
