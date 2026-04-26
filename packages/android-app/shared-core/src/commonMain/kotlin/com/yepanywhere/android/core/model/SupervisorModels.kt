@@ -135,6 +135,39 @@ data class SessionTimeline(
     val messages: List<SessionMessage>,
 )
 
+data class SlashCommand(
+    val name: String,
+    val description: String? = null,
+)
+
+data class SessionPaginationInfo(
+    val hasOlderMessages: Boolean = false,
+    val totalMessageCount: Int = 0,
+    val returnedMessageCount: Int = 0,
+    val truncatedBeforeMessageId: String? = null,
+    val totalCompactions: Int = 0,
+)
+
+data class SessionDetailQuery(
+    val afterMessageId: String? = null,
+    val beforeMessageId: String? = null,
+    val tailCompactions: Int? = null,
+)
+
+data class SessionDetail(
+    val session: SessionSummary,
+    val timeline: SessionTimeline,
+    val ownership: String? = null,
+    val processId: String? = null,
+    val processState: String? = null,
+    val permissionMode: String? = null,
+    val modeVersion: Int? = null,
+    val model: String? = session.model,
+    val slashCommands: List<SlashCommand> = emptyList(),
+    val pendingInputRequest: PendingInputRequest? = null,
+    val pagination: SessionPaginationInfo? = null,
+)
+
 data class PendingInputRequest(
     val id: String,
     val sessionId: String,

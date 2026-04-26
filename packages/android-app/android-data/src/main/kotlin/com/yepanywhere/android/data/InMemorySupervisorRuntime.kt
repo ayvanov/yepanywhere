@@ -15,6 +15,8 @@ import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
+import com.yepanywhere.android.core.model.SessionDetail
+import com.yepanywhere.android.core.model.SessionDetailQuery
 import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
@@ -256,6 +258,43 @@ class InMemorySupervisorRuntime(
             return cache.observeTimeline(sessionId).map { timeline ->
                 timeline ?: initialTimeline.copy(sessionId = sessionId, messages = emptyList())
             }
+        }
+
+        override suspend fun loadSessionDetail(
+            projectId: String,
+            sessionId: String,
+            query: SessionDetailQuery,
+        ): SessionDetail {
+            val session = cache.observeSessions().first().firstOrNull { it.id == sessionId }
+                ?: SessionSummary(
+                    id = sessionId,
+                    projectId = projectId,
+                    title = "New session",
+                    status = SessionStatus.IDLE,
+                    updatedLabel = "just now",
+                    hasUnread = false,
+                )
+            val timeline = cache.observeTimeline(sessionId).first()
+                ?: initialTimeline.copy(sessionId = sessionId, messages = emptyList())
+            return SessionDetail(
+                session = session,
+                timeline = timeline,
+                ownership = session.ownership ?: "none",
+                processState = session.activity,
+                permissionMode = null,
+                model = session.model,
+            )
+        }
+
+        override suspend fun loadSessionMetadata(
+            projectId: String,
+            sessionId: String,
+        ): SessionDetail {
+            return loadSessionDetail(
+                projectId = projectId,
+                sessionId = sessionId,
+                query = SessionDetailQuery(),
+            )
         }
 
         override suspend fun sendReply(

@@ -8,12 +8,15 @@ import com.yepanywhere.android.core.usecase.ApproveRequestUseCase
 import com.yepanywhere.android.core.usecase.DenyRequestUseCase
 import com.yepanywhere.android.core.usecase.ObserveActiveSessionUseCase
 import com.yepanywhere.android.core.usecase.SendSessionReplyUseCase
+import com.yepanywhere.android.core.model.SessionDetail
+import com.yepanywhere.android.core.model.SessionDetailQuery
+import com.yepanywhere.android.core.repository.SessionsRepository
 import com.yepanywhere.android.ui.ActiveSessionScreenState
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 interface ActiveSessionCommandHandler {
@@ -30,6 +33,10 @@ interface ActiveSessionCommandHandler {
         requestId: String,
         answer: String,
     )
+
+    fun refreshSessionDetail(query: SessionDetailQuery = SessionDetailQuery()) = Unit
+
+    fun refreshMetadata() = Unit
 }
 
 class ActiveSessionViewModel(
@@ -39,32 +46,107 @@ class ActiveSessionViewModel(
     private val denyRequestUseCase: DenyRequestUseCase,
     private val answerQuestionUseCase: AnswerQuestionUseCase,
     private val activeSessionId: String,
+    private val sessionsRepository: SessionsRepository? = null,
     scope: CoroutineScope? = null,
 ) : ViewModel(), ActiveSessionCommandHandler {
     private val coroutineScope = scope ?: viewModelScope
+    private var selectedProjectId: String? = null
+    private var selectedSessionId: String? = null
 
-    val uiState: StateFlow<ActiveSessionScreenState> = observeActiveSessionUseCase(sessionId = activeSessionId).map { activeSession ->
+    private val mutableUiState = MutableStateFlow(
         ActiveSessionScreenState(
-            title = "Active session",
-            subtitle = "Foreground realtime shell for session detail and approvals.",
-            timeline = activeSession.timeline,
-            pendingRequests = activeSession.pendingRequests,
-        )
-    }.stateIn(
-        scope = coroutineScope,
-        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-        initialValue = ActiveSessionScreenState(
             title = "Active session",
             subtitle = "Foreground realtime shell for session detail and approvals.",
             timeline = emptyTimeline(activeSessionId),
             pendingRequests = emptyList(),
-        ),
+        )
     )
+    val uiState: StateFlow<ActiveSessionScreenState> = mutableUiState.asStateFlow()
+
+    init {
+        coroutineScope.launch {
+            observeActiveSessionUseCase(sessionId = activeSessionId).collect { activeSession ->
+                val selected = selectedSessionId
+                if (selected == null || selected == activeSessionId) {
+                    mutableUiState.update { current ->
+                        current.copy(
+                            timeline = activeSession.timeline,
+                            pendingRequests = activeSession.pendingRequests,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun openSession(
+        projectId: String,
+        sessionId: String,
+    ) {
+        selectedProjectId = projectId
+        selectedSessionId = sessionId
+        coroutineScope.launch {
+            refreshSessionDetail()
+        }
+    }
+
+    override fun refreshSessionDetail(query: SessionDetailQuery) {
+        val projectId = selectedProjectId
+        val sessionId = selectedSessionId
+        if (projectId.isNullOrBlank() || sessionId.isNullOrBlank()) {
+            return
+        }
+        coroutineScope.launch {
+            mutableUiState.update { it.copy(isRefreshing = true, errorMessage = null) }
+            runCatching {
+                requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                    .loadSessionDetail(
+                        projectId = projectId,
+                        sessionId = sessionId,
+                        query = query,
+                    )
+            }.onSuccess(::applySessionDetail)
+                .onFailure { error ->
+                    mutableUiState.update {
+                        it.copy(
+                            isRefreshing = false,
+                            errorMessage = error.message ?: "Failed to refresh session.",
+                        )
+                    }
+                }
+        }
+    }
+
+    override fun refreshMetadata() {
+        val projectId = selectedProjectId
+        val sessionId = selectedSessionId
+        if (projectId.isNullOrBlank() || sessionId.isNullOrBlank()) {
+            return
+        }
+        coroutineScope.launch {
+            mutableUiState.update { it.copy(isRefreshing = true, errorMessage = null) }
+            runCatching {
+                requireNotNull(sessionsRepository) { "sessions_repository_required" }
+                    .loadSessionMetadata(
+                        projectId = projectId,
+                        sessionId = sessionId,
+                    )
+            }.onSuccess(::applySessionDetail)
+                .onFailure { error ->
+                    mutableUiState.update {
+                        it.copy(
+                            isRefreshing = false,
+                            errorMessage = error.message ?: "Failed to refresh session metadata.",
+                        )
+                    }
+                }
+        }
+    }
 
     override fun sendReply(text: String) {
         coroutineScope.launch {
             sendSessionReplyUseCase(
-                sessionId = activeSessionId,
+                sessionId = selectedSessionId ?: activeSessionId,
                 text = text,
             )
         }
@@ -73,6 +155,28 @@ class ActiveSessionViewModel(
     override fun approve(requestId: String) {
         coroutineScope.launch {
             approveRequestUseCase(requestId)
+        }
+    }
+
+    private fun applySessionDetail(detail: SessionDetail) {
+        mutableUiState.update { current ->
+            current.copy(
+                title = detail.session.title,
+                subtitle = detail.session.projectId,
+                timeline = detail.timeline,
+                pendingRequests = detail.pendingInputRequest?.let(::listOf) ?: emptyList(),
+                session = detail.session,
+                ownership = detail.ownership,
+                processId = detail.processId,
+                processState = detail.processState,
+                permissionMode = detail.permissionMode,
+                modeVersion = detail.modeVersion,
+                model = detail.model,
+                slashCommands = detail.slashCommands,
+                pagination = detail.pagination,
+                isRefreshing = false,
+                errorMessage = null,
+            )
         }
     }
 
@@ -108,6 +212,7 @@ class ActiveSessionViewModel(
             denyRequestUseCase: DenyRequestUseCase,
             answerQuestionUseCase: AnswerQuestionUseCase,
             activeSessionId: String,
+            sessionsRepository: SessionsRepository? = null,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -120,6 +225,7 @@ class ActiveSessionViewModel(
                         denyRequestUseCase = denyRequestUseCase,
                         answerQuestionUseCase = answerQuestionUseCase,
                         activeSessionId = activeSessionId,
+                        sessionsRepository = sessionsRepository,
                     ) as T
                 }
             }

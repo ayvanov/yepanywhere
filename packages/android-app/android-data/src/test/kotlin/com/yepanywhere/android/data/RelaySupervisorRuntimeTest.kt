@@ -6,6 +6,7 @@ import com.yepanywhere.android.core.model.NewSessionDefaults
 import com.yepanywhere.android.core.model.NewSessionOptions
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
+import com.yepanywhere.android.core.model.SessionDetailQuery
 import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.usecase.SecureRelayAuthHandshakeResult
@@ -431,6 +432,85 @@ class RelaySupervisorRuntimeTest {
     }
 
     @Test
+    fun loadSessionDetailUsesProjectRouteAndMapsMetadataPaginationAndCommands() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        val detail = runtime.sessionsRepository.loadSessionDetail(
+            projectId = "project-1",
+            sessionId = "session-detail",
+            query = SessionDetailQuery(
+                afterMessageId = "msg-1",
+                beforeMessageId = "msg-0",
+                tailCompactions = 2,
+            ),
+        )
+
+        assertEquals("session-detail", detail.session.id)
+        assertEquals("project-1", detail.session.projectId)
+        assertEquals("claude", detail.session.provider)
+        assertEquals("opus", detail.session.model)
+        assertEquals("self", detail.ownership)
+        assertEquals("process-1", detail.processId)
+        assertEquals("waiting-input", detail.processState)
+        assertEquals("acceptEdits", detail.permissionMode)
+        assertEquals(2, detail.modeVersion)
+        assertEquals("request-detail", detail.pendingInputRequest?.id)
+        assertEquals(listOf("/compact", "/model"), detail.slashCommands.map { it.name })
+        assertEquals(true, detail.pagination?.hasOlderMessages)
+        assertEquals(42, detail.pagination?.totalMessageCount)
+        assertEquals(listOf("msg-1", "msg-2"), detail.timeline.messages.map { it.id })
+        assertTrue(
+            gateway.requests.any { request ->
+                request.method == "GET" &&
+                    request.path == "/projects/project-1/sessions/session-detail?afterMessageId=msg-1&beforeMessageId=msg-0&tailCompactions=2"
+            },
+        )
+    }
+
+    @Test
+    fun loadSessionMetadataUsesLightweightMetadataEndpoint() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        val metadata = runtime.sessionsRepository.loadSessionMetadata(
+            projectId = "project-1",
+            sessionId = "session-detail",
+        )
+
+        assertEquals("session-detail", metadata.session.id)
+        assertEquals("metadata title", metadata.session.title)
+        assertEquals("external", metadata.ownership)
+        assertEquals("idle", metadata.processState)
+        assertEquals("sonnet", metadata.session.model)
+        assertEquals(listOf("/help"), metadata.slashCommands.map { it.name })
+        assertTrue(
+            gateway.requests.any { request ->
+                request.method == "GET" &&
+                    request.path == "/projects/project-1/sessions/session-detail/metadata"
+            },
+        )
+    }
+
+    @Test
     fun approveRequestHitsBackendInputEndpoint() = runTest(UnconfinedTestDispatcher()) {
         val gateway = FakeRelayRealtimeGateway()
         val runtime = RelaySupervisorRuntime(
@@ -744,6 +824,85 @@ class RelaySupervisorRuntimeTest {
             }
             if (method == "POST" && path == "/sessions/new-session-created/messages") {
                 return jsonObject("queued" to JsonPrimitive(true))
+            }
+            if (
+                method == "GET" &&
+                path == "/projects/project-1/sessions/session-detail?afterMessageId=msg-1&beforeMessageId=msg-0&tailCompactions=2"
+            ) {
+                return jsonObject(
+                    "session" to jsonObject(
+                        "id" to JsonPrimitive("session-detail"),
+                        "projectId" to JsonPrimitive("project-1"),
+                        "title" to JsonPrimitive("Loaded detail"),
+                        "updatedAt" to JsonPrimitive("2026-04-26T13:00:00Z"),
+                        "provider" to JsonPrimitive("claude"),
+                        "model" to JsonPrimitive("opus"),
+                        "processState" to JsonPrimitive("waiting-input"),
+                        "permissionMode" to JsonPrimitive("acceptEdits"),
+                    ),
+                    "messages" to JsonArray(
+                        listOf(
+                            jsonObject(
+                                "id" to JsonPrimitive("msg-1"),
+                                "type" to JsonPrimitive("assistant"),
+                                "timestamp" to JsonPrimitive("2026-04-26T13:00:00Z"),
+                                "content" to JsonArray(listOf(jsonObject("type" to JsonPrimitive("text"), "text" to JsonPrimitive("hello")))),
+                            ),
+                            jsonObject(
+                                "id" to JsonPrimitive("msg-2"),
+                                "type" to JsonPrimitive("user"),
+                                "timestamp" to JsonPrimitive("2026-04-26T13:01:00Z"),
+                                "content" to JsonArray(listOf(jsonObject("type" to JsonPrimitive("text"), "text" to JsonPrimitive("continue")))),
+                            ),
+                        ),
+                    ),
+                    "ownership" to jsonObject(
+                        "owner" to JsonPrimitive("self"),
+                        "processId" to JsonPrimitive("process-1"),
+                        "permissionMode" to JsonPrimitive("acceptEdits"),
+                        "modeVersion" to JsonPrimitive(2),
+                        "state" to JsonPrimitive("waiting-input"),
+                    ),
+                    "pendingInputRequest" to jsonObject(
+                        "id" to JsonPrimitive("request-detail"),
+                        "type" to JsonPrimitive("tool-approval"),
+                        "prompt" to JsonPrimitive("Approve command"),
+                    ),
+                    "slashCommands" to JsonArray(
+                        listOf(
+                            jsonObject("name" to JsonPrimitive("/compact"), "description" to JsonPrimitive("Compact")),
+                            jsonObject("name" to JsonPrimitive("/model"), "description" to JsonPrimitive("Switch model")),
+                        ),
+                    ),
+                    "pagination" to jsonObject(
+                        "hasOlderMessages" to JsonPrimitive(true),
+                        "totalMessageCount" to JsonPrimitive(42),
+                        "returnedMessageCount" to JsonPrimitive(2),
+                        "truncatedBeforeMessageId" to JsonPrimitive("msg-0"),
+                        "totalCompactions" to JsonPrimitive(2),
+                    ),
+                )
+            }
+            if (method == "GET" && path == "/projects/project-1/sessions/session-detail/metadata") {
+                return jsonObject(
+                    "session" to jsonObject(
+                        "id" to JsonPrimitive("session-detail"),
+                        "projectId" to JsonPrimitive("project-1"),
+                        "title" to JsonPrimitive("metadata title"),
+                        "updatedAt" to JsonPrimitive("2026-04-26T13:02:00Z"),
+                        "provider" to JsonPrimitive("claude"),
+                        "model" to JsonPrimitive("sonnet"),
+                        "processState" to JsonPrimitive("idle"),
+                        "permissionMode" to JsonPrimitive("default"),
+                    ),
+                    "ownership" to jsonObject(
+                        "owner" to JsonPrimitive("external"),
+                        "state" to JsonPrimitive("idle"),
+                    ),
+                    "slashCommands" to JsonArray(
+                        listOf(jsonObject("name" to JsonPrimitive("/help"), "description" to JsonPrimitive("Help"))),
+                    ),
+                )
             }
             return when (path) {
                 "/projects" -> jsonObject(

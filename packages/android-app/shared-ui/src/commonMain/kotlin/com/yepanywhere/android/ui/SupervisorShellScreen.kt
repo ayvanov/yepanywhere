@@ -42,8 +42,10 @@ import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
+import com.yepanywhere.android.core.model.SessionPaginationInfo
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.model.SlashCommand
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 
 enum class SupervisorShellSection(
@@ -106,6 +108,17 @@ data class ActiveSessionScreenState(
     val subtitle: String,
     val timeline: SessionTimeline,
     val pendingRequests: List<PendingInputRequest>,
+    val session: SessionSummary? = null,
+    val ownership: String? = null,
+    val processId: String? = null,
+    val processState: String? = null,
+    val permissionMode: String? = null,
+    val modeVersion: Int? = null,
+    val model: String? = null,
+    val slashCommands: List<SlashCommand> = emptyList(),
+    val pagination: SessionPaginationInfo? = null,
+    val isRefreshing: Boolean = false,
+    val errorMessage: String? = null,
 )
 
 data class NewSessionScreenState(
@@ -146,6 +159,8 @@ data class ActiveSessionCallbacks(
     val onApproveRequest: (String) -> Unit,
     val onDenyRequest: (requestId: String, feedback: String?) -> Unit,
     val onAnswerQuestion: (requestId: String, answer: String) -> Unit,
+    val onRefresh: () -> Unit = {},
+    val onRefreshMetadata: () -> Unit = {},
 )
 
 @Composable
@@ -956,6 +971,11 @@ private fun ActiveSessionSection(
             subtitle = state.subtitle,
         )
 
+        ActiveSessionMetadataCard(
+            state = state,
+            callbacks = callbacks,
+        )
+
         if (!actionsEnabled) {
             ActiveSessionStatusBanner(connectionStatus = state.timeline.connectionStatus)
         }
@@ -991,6 +1011,84 @@ private fun ActiveSessionSection(
             ),
         ) { message ->
             MessageCard(message)
+        }
+    }
+}
+
+@Composable
+private fun ActiveSessionMetadataCard(
+    state: ActiveSessionScreenState,
+    callbacks: ActiveSessionCallbacks,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("active-session-metadata"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = state.session?.title ?: state.timeline.sessionId,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            val metadata = buildList {
+                state.ownership?.let { add("Owner $it") }
+                state.processState?.let { add("State $it") }
+                state.permissionMode?.let { add("Mode $it") }
+                state.model?.let { add("Model $it") }
+            }.joinToString(" • ")
+            if (metadata.isNotBlank()) {
+                Text(
+                    text = metadata,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (state.pagination != null) {
+                Text(
+                    text = "Messages ${state.pagination.returnedMessageCount}/${state.pagination.totalMessageCount}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (state.slashCommands.isNotEmpty()) {
+                Text(
+                    text = state.slashCommands.joinToString(" ") { it.name },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            state.errorMessage?.let { error ->
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.isRefreshing,
+                    onClick = callbacks.onRefreshMetadata,
+                ) {
+                    Text("Metadata")
+                }
+                Button(
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.isRefreshing,
+                    onClick = callbacks.onRefresh,
+                ) {
+                    Text(if (state.isRefreshing) "Refreshing" else "Refresh")
+                }
+            }
         }
     }
 }

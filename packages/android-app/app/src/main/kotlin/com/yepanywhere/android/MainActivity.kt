@@ -156,6 +156,17 @@ private fun YepAnywhereAndroidApp(
             newSessionViewModel.initialize()
         }
     }
+    LaunchedEffect(
+        loginState.isAuthenticated,
+        shellState.selectedProjectId,
+        shellState.selectedSessionId,
+    ) {
+        val projectId = shellState.selectedProjectId
+        val sessionId = shellState.selectedSessionId
+        if (loginState.isAuthenticated && projectId != null && sessionId != null) {
+            activeSessionViewModel.openSession(projectId = projectId, sessionId = sessionId)
+        }
+    }
 
     if (loginState.isAuthenticated) {
         SupervisorShellScreen(
@@ -210,6 +221,8 @@ internal fun createActiveSessionCallbacks(handler: ActiveSessionCommandHandler):
         onApproveRequest = handler::approve,
         onDenyRequest = handler::deny,
         onAnswerQuestion = handler::answerQuestion,
+        onRefresh = { handler.refreshSessionDetail() },
+        onRefreshMetadata = handler::refreshMetadata,
     )
 }
 

@@ -104,6 +104,7 @@ class AndroidAppContainer(
             denyRequestUseCase = denyRequestUseCase,
             answerQuestionUseCase = answerQuestionUseCase,
             activeSessionId = androidDataLayer.activeSessionId,
+            sessionsRepository = androidDataLayer.sessionsRepository,
         )
     }
 }

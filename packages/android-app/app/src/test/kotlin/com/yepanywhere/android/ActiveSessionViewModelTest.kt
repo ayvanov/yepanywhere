@@ -4,8 +4,13 @@ import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
+import com.yepanywhere.android.core.model.SessionDetail
+import com.yepanywhere.android.core.model.SessionDetailQuery
+import com.yepanywhere.android.core.model.SessionPaginationInfo
+import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.model.SlashCommand
 import com.yepanywhere.android.core.repository.ApprovalsRepository
 import com.yepanywhere.android.core.repository.SessionsRepository
 import com.yepanywhere.android.core.usecase.AnswerQuestionUseCase
@@ -24,6 +29,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ActiveSessionViewModelTest {
@@ -107,6 +113,77 @@ class ActiveSessionViewModelTest {
     }
 
     @Test
+    fun opensRoutedSessionAndRefreshesDetailAndMetadata() = runTest {
+        val timeline = MutableStateFlow(emptyTimeline())
+        val pendingRequests = MutableStateFlow(emptyList<PendingInputRequest>())
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val sessionsRepository = FakeSessionsRepository(
+            timeline = timeline,
+            detail = sessionDetail(
+                title = "Loaded detail",
+                ownership = "self",
+                model = "opus",
+                processState = "waiting-input",
+                permissionMode = "acceptEdits",
+                slashCommands = listOf(SlashCommand(name = "/model", description = "Switch model")),
+            ),
+            metadata = sessionDetail(
+                title = "Metadata title",
+                ownership = "external",
+                model = "sonnet",
+                processState = "idle",
+                permissionMode = "default",
+                slashCommands = listOf(SlashCommand(name = "/help", description = "Help")),
+            ),
+        )
+        val viewModel = ActiveSessionViewModel(
+            observeActiveSessionUseCase = ObserveActiveSessionUseCase(
+                sessionsRepository = sessionsRepository,
+                approvalsRepository = FakeApprovalsRepository(pendingRequests),
+            ),
+            sendSessionReplyUseCase = SendSessionReplyUseCase(sessionsRepository),
+            approveRequestUseCase = ApproveRequestUseCase(FakeApprovalsRepository(pendingRequests)),
+            denyRequestUseCase = DenyRequestUseCase(FakeApprovalsRepository(pendingRequests)),
+            answerQuestionUseCase = AnswerQuestionUseCase(FakeApprovalsRepository(pendingRequests)),
+            activeSessionId = "session-android-shell",
+            sessionsRepository = sessionsRepository,
+            scope = externalScope,
+        )
+        val collectionJob = externalScope.launch {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.openSession(projectId = "project-yep", sessionId = "session-detail")
+        advanceUntilIdle()
+
+        assertEquals("session-detail", viewModel.uiState.value.timeline.sessionId)
+        assertEquals("Loaded detail", viewModel.uiState.value.session?.title)
+        assertEquals("self", viewModel.uiState.value.ownership)
+        assertEquals("opus", viewModel.uiState.value.model)
+        assertEquals("waiting-input", viewModel.uiState.value.processState)
+        assertEquals("acceptEdits", viewModel.uiState.value.permissionMode)
+        assertEquals(listOf("/model"), viewModel.uiState.value.slashCommands.map { it.name })
+        assertEquals(true, viewModel.uiState.value.pagination?.hasOlderMessages)
+        assertFalse(viewModel.uiState.value.isRefreshing)
+        assertEquals(
+            listOf("project-yep|session-detail|SessionDetailQuery(afterMessageId=null, beforeMessageId=null, tailCompactions=null)"),
+            sessionsRepository.detailLoads,
+        )
+
+        viewModel.refreshMetadata()
+        advanceUntilIdle()
+
+        assertEquals("Metadata title", viewModel.uiState.value.session?.title)
+        assertEquals("external", viewModel.uiState.value.ownership)
+        assertEquals("sonnet", viewModel.uiState.value.model)
+        assertEquals(listOf("/help"), viewModel.uiState.value.slashCommands.map { it.name })
+        assertEquals(listOf("project-yep|session-detail"), sessionsRepository.metadataLoads)
+
+        collectionJob.cancel()
+        externalScope.cancel()
+    }
+
+    @Test
     fun forwardsReplyAndApprovalCommandsToUseCases() = runTest {
         val timeline = MutableStateFlow(emptyTimeline())
         val pendingRequests = MutableStateFlow(emptyList<PendingInputRequest>())
@@ -149,12 +226,33 @@ class ActiveSessionViewModelTest {
 
     private class FakeSessionsRepository(
         private val timeline: MutableStateFlow<SessionTimeline>,
+        private val detail: SessionDetail? = null,
+        private val metadata: SessionDetail? = null,
     ) : SessionsRepository {
         val sentReplies = mutableListOf<String>()
+        val detailLoads = mutableListOf<String>()
+        val metadataLoads = mutableListOf<String>()
 
         override fun observeSessions(projectId: String?): Flow<List<SessionSummary>> = MutableStateFlow(emptyList())
 
         override suspend fun refreshSessions(projectId: String?) = Unit
+
+        override suspend fun loadSessionDetail(
+            projectId: String,
+            sessionId: String,
+            query: SessionDetailQuery,
+        ): SessionDetail {
+            detailLoads += "$projectId|$sessionId|$query"
+            return detail ?: error("missing_detail")
+        }
+
+        override suspend fun loadSessionMetadata(
+            projectId: String,
+            sessionId: String,
+        ): SessionDetail {
+            metadataLoads += "$projectId|$sessionId"
+            return metadata ?: error("missing_metadata")
+        }
 
         override fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline> = timeline
 
@@ -190,6 +288,62 @@ class ActiveSessionViewModelTest {
             sessionId = "session-android-shell",
             connectionStatus = com.yepanywhere.android.core.model.RelayConnectionStatus.CONNECTED,
             messages = emptyList(),
+        )
+    }
+
+    private fun sessionDetail(
+        title: String = "Session detail",
+        ownership: String = "none",
+        model: String = "sonnet",
+        processState: String = "idle",
+        permissionMode: String = "default",
+        slashCommands: List<SlashCommand> = emptyList(),
+    ): SessionDetail {
+        val session = SessionSummary(
+            id = "session-detail",
+            projectId = "project-yep",
+            title = title,
+            status = SessionStatus.RUNNING,
+            updatedLabel = "now",
+            hasUnread = false,
+            provider = "claude",
+            model = model,
+        )
+        return SessionDetail(
+            session = session,
+            timeline = SessionTimeline(
+                sessionId = "session-detail",
+                connectionStatus = com.yepanywhere.android.core.model.RelayConnectionStatus.CONNECTED,
+                messages = listOf(
+                    SessionMessage(
+                        id = "msg-1",
+                        author = SessionMessageAuthor.ASSISTANT,
+                        body = "Loaded detail message",
+                        timestampLabel = "now",
+                    ),
+                ),
+            ),
+            ownership = ownership,
+            processId = "process-1",
+            processState = processState,
+            permissionMode = permissionMode,
+            modeVersion = 2,
+            model = model,
+            slashCommands = slashCommands,
+            pendingInputRequest = PendingInputRequest(
+                id = "request-detail",
+                sessionId = "session-detail",
+                title = "Approval required",
+                body = "Approve command",
+                kind = InboxItemKind.APPROVAL,
+            ),
+            pagination = SessionPaginationInfo(
+                hasOlderMessages = true,
+                totalMessageCount = 42,
+                returnedMessageCount = 1,
+                truncatedBeforeMessageId = "msg-0",
+                totalCompactions = 2,
+            ),
         )
     }
 }

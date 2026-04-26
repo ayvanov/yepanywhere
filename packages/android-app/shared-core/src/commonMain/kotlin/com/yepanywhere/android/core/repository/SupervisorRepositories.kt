@@ -12,6 +12,8 @@ import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.SessionMetadataUpdate
+import com.yepanywhere.android.core.model.SessionDetail
+import com.yepanywhere.android.core.model.SessionDetailQuery
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.model.StoredRelaySession
@@ -89,6 +91,21 @@ interface SessionsRepository {
     }
 
     fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline>
+
+    suspend fun loadSessionDetail(
+        projectId: String,
+        sessionId: String,
+        query: SessionDetailQuery = SessionDetailQuery(),
+    ): SessionDetail {
+        throw NotImplementedError("Session detail is not implemented by this repository")
+    }
+
+    suspend fun loadSessionMetadata(
+        projectId: String,
+        sessionId: String,
+    ): SessionDetail {
+        throw NotImplementedError("Session metadata detail is not implemented by this repository")
+    }
 
     suspend fun sendReply(
         sessionId: String,

@@ -16,10 +16,14 @@ import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
+import com.yepanywhere.android.core.model.SessionDetail
+import com.yepanywhere.android.core.model.SessionDetailQuery
 import com.yepanywhere.android.core.model.SessionMetadataUpdate
+import com.yepanywhere.android.core.model.SessionPaginationInfo
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
+import com.yepanywhere.android.core.model.SlashCommand
 import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.model.SupervisorPushEventStreamAdapter
@@ -308,6 +312,73 @@ class RelaySupervisorRuntime(
                 stats = payload["stats"].asObject()?.toGlobalSessionStats()
                     ?: GlobalSessionStats(total = sessions.size),
             )
+        }
+
+        override suspend fun loadSessionDetail(
+            projectId: String,
+            sessionId: String,
+            query: SessionDetailQuery,
+        ): SessionDetail {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestObject(
+                method = "GET",
+                path = buildSessionDetailPath(
+                    projectId = projectId,
+                    sessionId = backendSessionId,
+                    query = query,
+                ),
+            )
+            val detail = payload.toSessionDetail(
+                fallbackProjectId = projectId,
+                fallbackSessionId = sessionId,
+                connectionStatus = connectionState.value,
+            )
+            cache.storeTimeline(detail.timeline)
+            cache.storeSessions(
+                (cache.observeSessions().first().filterNot { it.id == detail.session.id } + detail.session)
+                    .sortedByDescending { it.updatedLabel },
+            )
+            detail.pendingInputRequest?.let { pending ->
+                cache.storePendingRequests(
+                    cache.observePendingRequests().first()
+                        .filterNot { it.id == pending.id || it.sessionId == pending.sessionId } + pending,
+                )
+            }
+            return detail
+        }
+
+        override suspend fun loadSessionMetadata(
+            projectId: String,
+            sessionId: String,
+        ): SessionDetail {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestObject(
+                method = "GET",
+                path = "/projects/$projectId/sessions/$backendSessionId/metadata",
+            )
+            val currentTimeline = cache.observeTimeline(sessionId).first()
+                ?: SessionTimeline(
+                    sessionId = sessionId,
+                    connectionStatus = connectionState.value,
+                    messages = emptyList(),
+                )
+            val detail = payload.toSessionDetail(
+                fallbackProjectId = projectId,
+                fallbackSessionId = sessionId,
+                connectionStatus = connectionState.value,
+                fallbackTimeline = currentTimeline,
+            )
+            cache.storeSessions(
+                (cache.observeSessions().first().filterNot { it.id == detail.session.id } + detail.session)
+                    .sortedByDescending { it.updatedLabel },
+            )
+            detail.pendingInputRequest?.let { pending ->
+                cache.storePendingRequests(
+                    cache.observePendingRequests().first()
+                        .filterNot { it.id == pending.id || it.sessionId == pending.sessionId } + pending,
+                )
+            }
+            return detail
         }
 
         override fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline> {
@@ -1067,6 +1138,25 @@ private fun buildGlobalSessionsPath(
     }
 }
 
+private fun buildSessionDetailPath(
+    projectId: String,
+    sessionId: String,
+    query: SessionDetailQuery,
+): String {
+    val params = buildList {
+        query.afterMessageId?.let { add("afterMessageId" to it) }
+        query.beforeMessageId?.let { add("beforeMessageId" to it) }
+        query.tailCompactions?.let { add("tailCompactions" to it.toString()) }
+    }
+    val base = "/projects/$projectId/sessions/$sessionId"
+    if (params.isEmpty()) {
+        return base
+    }
+    return base + "?" + params.joinToString("&") { (key, value) ->
+        "${key.urlEncode()}=${value.urlEncode()}"
+    }
+}
+
 private fun String.urlEncode(): String {
     return URLEncoder.encode(this, StandardCharsets.UTF_8.name())
 }
@@ -1115,6 +1205,80 @@ private fun JsonObject.toGlobalSessionStats(): GlobalSessionStats {
         unread = this["unread"].asInt() ?: 0,
         starred = this["starred"].asInt() ?: 0,
         archived = this["archived"].asInt() ?: 0,
+    )
+}
+
+private fun JsonObject.toSessionDetail(
+    fallbackProjectId: String,
+    fallbackSessionId: String,
+    connectionStatus: RelayConnectionStatus,
+    fallbackTimeline: SessionTimeline? = null,
+): SessionDetail {
+    val sessionObject = this["session"].asObject() ?: JsonObject(emptyMap())
+    val ownershipObject = this["ownership"].asObject()
+        ?: sessionObject["ownership"].asObject()
+    val session = sessionObject.toSessionSummary(fallbackProjectId = fallbackProjectId)
+        ?: SessionSummary(
+            id = fallbackSessionId,
+            projectId = fallbackProjectId,
+            title = "Untitled session",
+            status = SessionStatus.IDLE,
+            updatedLabel = "just now",
+            hasUnread = false,
+        )
+    val messages = this["messages"].asJsonArray().mapIndexed { index, element ->
+        (element as? JsonObject).toSessionMessage(index)
+    }
+    val timeline = if (messages.isNotEmpty()) {
+        SessionTimeline(
+            sessionId = session.id,
+            connectionStatus = connectionStatus,
+            messages = messages,
+        )
+    } else {
+        fallbackTimeline ?: SessionTimeline(
+            sessionId = session.id,
+            connectionStatus = connectionStatus,
+            messages = emptyList(),
+        )
+    }
+    val pendingRequest = this["pendingInputRequest"].asObject()?.toPendingRequest(session.id)
+    return SessionDetail(
+        session = session,
+        timeline = timeline,
+        ownership = ownershipObject?.get("owner").asString() ?: this["ownership"].asString(),
+        processId = ownershipObject?.get("processId").asString()
+            ?: sessionObject["processId"].asString(),
+        processState = ownershipObject?.get("state").asString()
+            ?: sessionObject["processState"].asString(),
+        permissionMode = ownershipObject?.get("permissionMode").asString()
+            ?: sessionObject["permissionMode"].asString(),
+        modeVersion = ownershipObject?.get("modeVersion").asInt()
+            ?: sessionObject["modeVersion"].asInt(),
+        model = session.model ?: sessionObject["model"].asString(),
+        slashCommands = this["slashCommands"].asJsonArray().mapNotNull { element ->
+            (element as? JsonObject)?.toSlashCommand()
+        },
+        pendingInputRequest = pendingRequest,
+        pagination = this["pagination"].asObject()?.toSessionPaginationInfo(),
+    )
+}
+
+private fun JsonObject.toSlashCommand(): SlashCommand? {
+    val name = this["name"].asString() ?: return null
+    return SlashCommand(
+        name = name,
+        description = this["description"].asString(),
+    )
+}
+
+private fun JsonObject.toSessionPaginationInfo(): SessionPaginationInfo {
+    return SessionPaginationInfo(
+        hasOlderMessages = this["hasOlderMessages"].asBoolean() ?: false,
+        totalMessageCount = this["totalMessageCount"].asInt() ?: 0,
+        returnedMessageCount = this["returnedMessageCount"].asInt() ?: 0,
+        truncatedBeforeMessageId = this["truncatedBeforeMessageId"].asString(),
+        totalCompactions = this["totalCompactions"].asInt() ?: 0,
     )
 }
 
