@@ -4,14 +4,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yepanywhere.android.core.model.GlobalSessionFilters
+import com.yepanywhere.android.core.model.GitFileChange
 import com.yepanywhere.android.core.model.NewSessionDefaults
 import com.yepanywhere.android.core.model.NewSessionOptions
 import com.yepanywhere.android.core.repository.ProjectsRepository
+import com.yepanywhere.android.core.repository.FilesRepository
+import com.yepanywhere.android.core.repository.GitRepository
 import com.yepanywhere.android.core.repository.SessionsRepository
 import com.yepanywhere.android.core.usecase.ObserveInboxUseCase
 import com.yepanywhere.android.core.usecase.ObserveProjectsUseCase
 import com.yepanywhere.android.ui.InboxScreenState
 import com.yepanywhere.android.ui.AgentsScreenState
+import com.yepanywhere.android.ui.FileScreenState
+import com.yepanywhere.android.ui.GitStatusScreenState
 import com.yepanywhere.android.ui.NewSessionScreenState
 import com.yepanywhere.android.ui.ProjectsScreenState
 import com.yepanywhere.android.ui.SessionsScreenState
@@ -483,6 +488,175 @@ class NewSessionViewModel(
                     sessionsRepository = sessionsRepository,
                 )
             }
+        }
+    }
+}
+
+class FileScreenViewModel(
+    private val filesRepository: FilesRepository,
+    scope: CoroutineScope? = null,
+) : ViewModel() {
+    private val coroutineScope = scope ?: viewModelScope
+    private val mutableUiState = MutableStateFlow(FileScreenState())
+    val uiState: StateFlow<FileScreenState> = mutableUiState.asStateFlow()
+
+    fun openFile(
+        projectId: String,
+        path: String,
+        highlight: Boolean = true,
+    ) {
+        coroutineScope.launch {
+            mutableUiState.update {
+                it.copy(
+                    projectId = projectId,
+                    path = path,
+                    isLoading = true,
+                    errorMessage = null,
+                )
+            }
+            runCatching {
+                filesRepository.loadFile(projectId = projectId, path = path, highlight = highlight)
+            }.onSuccess { file ->
+                mutableUiState.update {
+                    it.copy(
+                        title = file.metadata.path,
+                        file = file,
+                        isLoading = false,
+                        errorMessage = null,
+                    )
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = error.message ?: "Failed to load file.",
+                    )
+                }
+            }
+        }
+    }
+
+    companion object {
+        fun factory(filesRepository: FilesRepository): ViewModelProvider.Factory {
+            return sectionFactory { FileScreenViewModel(filesRepository = filesRepository) }
+        }
+    }
+}
+
+class GitStatusScreenViewModel(
+    private val gitRepository: GitRepository,
+    scope: CoroutineScope? = null,
+) : ViewModel() {
+    private val coroutineScope = scope ?: viewModelScope
+    private val mutableUiState = MutableStateFlow(GitStatusScreenState())
+    val uiState: StateFlow<GitStatusScreenState> = mutableUiState.asStateFlow()
+
+    fun openProject(projectId: String) {
+        coroutineScope.launch {
+            mutableUiState.update {
+                it.copy(
+                    projectId = projectId,
+                    isLoading = true,
+                    errorMessage = null,
+                    selectedFile = null,
+                    diff = null,
+                    showFullContext = false,
+                )
+            }
+            runCatching {
+                gitRepository.loadGitStatus(projectId)
+            }.onSuccess { status ->
+                mutableUiState.update {
+                    it.copy(
+                        status = status,
+                        isLoading = false,
+                        errorMessage = null,
+                    )
+                }
+            }.onFailure { error ->
+                mutableUiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = error.message ?: "Failed to load git status.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun openDiff(file: GitFileChange) {
+        openDiff(
+            path = file.path,
+            staged = file.staged,
+            status = file.status,
+        )
+    }
+
+    fun openDiff(
+        path: String,
+        staged: Boolean,
+        status: String,
+    ) {
+        val projectId = mutableUiState.value.projectId ?: return
+        val file = mutableUiState.value.status?.files?.firstOrNull {
+            it.path == path && it.staged == staged && it.status == status
+        } ?: GitFileChange(path = path, status = status, staged = staged)
+        coroutineScope.launch {
+            loadDiff(projectId = projectId, file = file, fullContext = false)
+        }
+    }
+
+    fun loadFullContext() {
+        val state = mutableUiState.value
+        val projectId = state.projectId ?: return
+        val file = state.selectedFile ?: return
+        coroutineScope.launch {
+            loadDiff(projectId = projectId, file = file, fullContext = true)
+        }
+    }
+
+    private suspend fun loadDiff(
+        projectId: String,
+        file: GitFileChange,
+        fullContext: Boolean,
+    ) {
+        mutableUiState.update {
+            it.copy(
+                selectedFile = file,
+                isLoadingDiff = true,
+                errorMessage = null,
+            )
+        }
+        runCatching {
+            gitRepository.loadGitDiff(
+                projectId = projectId,
+                path = file.path,
+                staged = file.staged,
+                status = file.status,
+                fullContext = fullContext,
+            )
+        }.onSuccess { diff ->
+            mutableUiState.update {
+                it.copy(
+                    diff = diff,
+                    showFullContext = fullContext,
+                    isLoadingDiff = false,
+                    errorMessage = null,
+                )
+            }
+        }.onFailure { error ->
+            mutableUiState.update {
+                it.copy(
+                    isLoadingDiff = false,
+                    errorMessage = error.message ?: "Failed to load diff.",
+                )
+            }
+        }
+    }
+
+    companion object {
+        fun factory(gitRepository: GitRepository): ViewModelProvider.Factory {
+            return sectionFactory { GitStatusScreenViewModel(gitRepository = gitRepository) }
         }
     }
 }

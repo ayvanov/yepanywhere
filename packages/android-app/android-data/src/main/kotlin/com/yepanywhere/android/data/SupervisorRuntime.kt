@@ -4,6 +4,8 @@ import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.model.SupervisorPushPayload
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.core.repository.ApprovalsRepository
+import com.yepanywhere.android.core.repository.FilesRepository
+import com.yepanywhere.android.core.repository.GitRepository
 import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
 import com.yepanywhere.android.core.repository.RelayAuthRepository
@@ -18,6 +20,8 @@ interface SupervisorRuntime {
     val relayConnectionClient: RelayConnectionClient
     val projectsRepository: ProjectsRepository
     val sessionsRepository: SessionsRepository
+    val filesRepository: FilesRepository
+    val gitRepository: GitRepository
     val inboxRepository: InboxRepository
     val approvalsRepository: ApprovalsRepository
 

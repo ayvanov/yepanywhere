@@ -33,8 +33,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.yepanywhere.android.ui.ActiveSessionCallbacks
+import com.yepanywhere.android.ui.GitStatusCallbacks
 import com.yepanywhere.android.ui.AndroidAppTheme
 import com.yepanywhere.android.ui.NewSessionCallbacks
+import com.yepanywhere.android.ui.SupervisorShellSection
 import com.yepanywhere.android.ui.SupervisorShellScreen
 import com.yepanywhere.android.core.model.SessionAttachment
 import kotlinx.coroutines.Job
@@ -78,6 +80,12 @@ class MainActivity : ComponentActivity() {
     private val newSessionViewModel: NewSessionViewModel by viewModels {
         appContainer.createNewSessionViewModelFactory()
     }
+    private val fileViewModel: FileScreenViewModel by viewModels {
+        appContainer.createFileScreenViewModelFactory()
+    }
+    private val gitStatusViewModel: GitStatusScreenViewModel by viewModels {
+        appContainer.createGitStatusScreenViewModelFactory()
+    }
     private val relayLoginViewModel: RelayLoginViewModel by viewModels {
         appContainer.createRelayLoginViewModelFactory()
     }
@@ -98,6 +106,8 @@ class MainActivity : ComponentActivity() {
                 inboxViewModel = inboxViewModel,
                 activeSessionViewModel = activeSessionViewModel,
                 newSessionViewModel = newSessionViewModel,
+                fileViewModel = fileViewModel,
+                gitStatusViewModel = gitStatusViewModel,
                 relayLoginViewModel = relayLoginViewModel,
                 onAttachClicked = { attachmentPickerLauncher.launch(arrayOf("*/*")) },
             )
@@ -149,6 +159,8 @@ private fun YepAnywhereAndroidApp(
     inboxViewModel: InboxScreenViewModel,
     activeSessionViewModel: ActiveSessionViewModel,
     newSessionViewModel: NewSessionViewModel,
+    fileViewModel: FileScreenViewModel,
+    gitStatusViewModel: GitStatusScreenViewModel,
     relayLoginViewModel: RelayLoginViewModel,
     onAttachClicked: () -> Unit,
 ) {
@@ -160,11 +172,23 @@ private fun YepAnywhereAndroidApp(
     val inboxState by inboxViewModel.uiState.collectAsState()
     val activeSessionState by activeSessionViewModel.uiState.collectAsState()
     val newSessionState by newSessionViewModel.uiState.collectAsState()
+    val fileState by fileViewModel.uiState.collectAsState()
+    val gitStatusState by gitStatusViewModel.uiState.collectAsState()
     val activeSessionCallbacks = remember(activeSessionViewModel, onAttachClicked) {
         createActiveSessionCallbacks(activeSessionViewModel, onAttachClicked)
     }
     val newSessionCallbacks = remember(newSessionViewModel) {
         createNewSessionCallbacks(newSessionViewModel)
+    }
+    val gitStatusCallbacks = remember(gitStatusViewModel) {
+        GitStatusCallbacks(
+            onOpenProject = { projectId ->
+                shellViewModel.selectGitStatus(projectId)
+                gitStatusViewModel.openProject(projectId)
+            },
+            onOpenDiff = gitStatusViewModel::openDiff,
+            onLoadFullContext = gitStatusViewModel::loadFullContext,
+        )
     }
 
     LaunchedEffect(relayLoginViewModel) {
@@ -191,6 +215,37 @@ private fun YepAnywhereAndroidApp(
             activeSessionViewModel.openSession(projectId = projectId, sessionId = sessionId)
         }
     }
+    LaunchedEffect(
+        loginState.isAuthenticated,
+        shellState.selectedSection,
+        shellState.selectedProjectId,
+        shellState.selectedFilePath,
+    ) {
+        val projectId = shellState.selectedProjectId
+        val path = shellState.selectedFilePath
+        if (
+            loginState.isAuthenticated &&
+            shellState.selectedSection == SupervisorShellSection.FILE &&
+            projectId != null &&
+            path != null
+        ) {
+            fileViewModel.openFile(projectId = projectId, path = path)
+        }
+    }
+    LaunchedEffect(
+        loginState.isAuthenticated,
+        shellState.selectedSection,
+        shellState.selectedProjectId,
+    ) {
+        val projectId = shellState.selectedProjectId
+        if (
+            loginState.isAuthenticated &&
+            shellState.selectedSection == SupervisorShellSection.GIT_STATUS &&
+            projectId != null
+        ) {
+            gitStatusViewModel.openProject(projectId)
+        }
+    }
 
     if (loginState.isAuthenticated) {
         SupervisorShellScreen(
@@ -201,14 +256,18 @@ private fun YepAnywhereAndroidApp(
             inboxState = inboxState,
             activeSessionState = activeSessionState,
             newSessionState = newSessionState,
+            fileState = fileState,
+            gitStatusState = gitStatusState,
             activeSessionCallbacks = activeSessionCallbacks,
             newSessionCallbacks = newSessionCallbacks,
+            gitStatusCallbacks = gitStatusCallbacks,
             onSectionSelected = shellViewModel::selectSection,
             onProjectSelected = { projectId ->
                 shellViewModel.selectProject(projectId)
                 sessionsViewModel.applyFilters(project = projectId)
             },
             onSessionSelected = shellViewModel::selectSession,
+            onFileSelected = shellViewModel::selectFile,
             onSessionFiltersApplied = { filters ->
                 sessionsViewModel.applyFilters(
                     project = filters.project,

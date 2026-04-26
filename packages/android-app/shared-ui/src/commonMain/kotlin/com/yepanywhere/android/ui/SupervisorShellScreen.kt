@@ -36,6 +36,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yepanywhere.android.core.model.AgentMapping
 import com.yepanywhere.android.core.model.AgentSession
+import com.yepanywhere.android.core.model.FileContent
+import com.yepanywhere.android.core.model.GitDiffResult
+import com.yepanywhere.android.core.model.GitFileChange
+import com.yepanywhere.android.core.model.GitStatusInfo
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.InboxTier
@@ -75,7 +79,7 @@ enum class SupervisorShellSection(
     ;
 
     companion object {
-        val topLevelEntries = listOf(PROJECTS, SESSIONS, AGENTS, INBOX, SETTINGS)
+        val topLevelEntries = listOf(PROJECTS, SESSIONS, AGENTS, INBOX, GIT_STATUS, SETTINGS)
     }
 }
 
@@ -182,6 +186,29 @@ data class NewSessionScreenState(
     val errorMessage: String? = null,
 )
 
+data class FileScreenState(
+    val title: String = "File",
+    val subtitle: String = "Raw and highlighted project file content.",
+    val projectId: String? = null,
+    val path: String? = null,
+    val file: FileContent? = null,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+)
+
+data class GitStatusScreenState(
+    val title: String = "Git status",
+    val subtitle: String = "Changed files, diffs, and expanded context.",
+    val projectId: String? = null,
+    val status: GitStatusInfo? = null,
+    val selectedFile: GitFileChange? = null,
+    val diff: GitDiffResult? = null,
+    val showFullContext: Boolean = false,
+    val isLoading: Boolean = false,
+    val isLoadingDiff: Boolean = false,
+    val errorMessage: String? = null,
+)
+
 data class NewSessionCallbacks(
     val onProjectChanged: (String) -> Unit = {},
     val onProviderChanged: (String) -> Unit = {},
@@ -193,6 +220,12 @@ data class NewSessionCallbacks(
     val onStartDirect: () -> Unit = {},
     val onStartTwoPhase: () -> Unit = {},
     val onSaveDefaults: () -> Unit = {},
+)
+
+data class GitStatusCallbacks(
+    val onOpenProject: (String) -> Unit = {},
+    val onOpenDiff: (GitFileChange) -> Unit = {},
+    val onLoadFullContext: () -> Unit = {},
 )
 
 data class ActiveSessionCallbacks(
@@ -226,11 +259,15 @@ fun SupervisorShellScreen(
     inboxState: InboxScreenState,
     activeSessionState: ActiveSessionScreenState,
     newSessionState: NewSessionScreenState = NewSessionScreenState(),
+    fileState: FileScreenState = FileScreenState(),
+    gitStatusState: GitStatusScreenState = GitStatusScreenState(),
     activeSessionCallbacks: ActiveSessionCallbacks,
     newSessionCallbacks: NewSessionCallbacks = NewSessionCallbacks(),
+    gitStatusCallbacks: GitStatusCallbacks = GitStatusCallbacks(),
     onSectionSelected: (SupervisorShellSection) -> Unit,
     onProjectSelected: (String) -> Unit,
     onSessionSelected: (projectId: String, sessionId: String) -> Unit = { _, _ -> },
+    onFileSelected: (String) -> Unit = {},
     onSessionFiltersApplied: (GlobalSessionFilters) -> Unit = {},
     onLoadMoreSessions: () -> Unit = {},
     onSessionSelectionToggled: (String) -> Unit = {},
@@ -259,6 +296,7 @@ fun SupervisorShellScreen(
                                         SupervisorShellSection.SESSIONS -> "${state.snapshot.sessions.size}"
                                         SupervisorShellSection.AGENTS -> "${agentsState.activeAgents.size}"
                                         SupervisorShellSection.INBOX -> "${state.snapshot.unreadInboxCount}"
+                                        SupervisorShellSection.GIT_STATUS -> "${gitStatusState.status?.files?.size ?: 0}"
                                         SupervisorShellSection.SETTINGS -> "0"
                                         else -> "0"
                                     },
@@ -330,18 +368,19 @@ fun SupervisorShellScreen(
                     SupervisorShellSection.ACTIVE -> ActiveSessionSection(
                         state = activeSessionState,
                         callbacks = activeSessionCallbacks,
+                        onFileSelected = onFileSelected,
                     )
                     SupervisorShellSection.NEW_SESSION -> NewSessionSection(
                         state = newSessionState,
                         callbacks = newSessionCallbacks,
                     )
-                    SupervisorShellSection.FILE -> PlaceholderSection(
-                        title = state.selectedFilePath ?: "File",
-                        subtitle = "File content and syntax highlighting route.",
+                    SupervisorShellSection.FILE -> FileSection(
+                        state = fileState,
                     )
-                    SupervisorShellSection.GIT_STATUS -> PlaceholderSection(
-                        title = "Git status",
-                        subtitle = "Changed files and diff viewer route.",
+                    SupervisorShellSection.GIT_STATUS -> GitStatusSection(
+                        state = gitStatusState,
+                        projects = projectsState.projects,
+                        callbacks = gitStatusCallbacks,
                     )
                     SupervisorShellSection.DEVICES -> PlaceholderSection(
                         title = "Devices",
@@ -860,6 +899,204 @@ private fun PlaceholderSection(
 }
 
 @Composable
+private fun FileSection(state: FileScreenState) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle(
+            title = state.path ?: state.title,
+            subtitle = state.subtitle,
+        )
+        when {
+            state.isLoading -> Text("Loading file...")
+            state.errorMessage != null -> Text(
+                text = state.errorMessage,
+                color = MaterialTheme.colorScheme.error,
+            )
+            state.file == null -> EmptyStateCard(
+                title = "No file selected",
+                body = "Open a file path from a message or route.",
+            )
+            else -> FileContentCard(state.file)
+        }
+    }
+}
+
+@Composable
+private fun FileContentCard(file: FileContent) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("file-viewer"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(file.metadata.path, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            Text(
+                text = "${file.metadata.mimeType} • ${file.metadata.size} B",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            file.highlightedLanguage?.let { language ->
+                Text(
+                    text = "Highlighted $language",
+                    modifier = Modifier.testTag("file-highlight-language"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (file.highlightedTruncated) {
+                Text("Highlight truncated", style = MaterialTheme.typography.bodySmall)
+            }
+            Text(
+                text = file.content ?: file.highlightedHtml ?: "Binary or large file. Raw URL: ${file.rawUrl}",
+                modifier = Modifier.testTag("file-content"),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun GitStatusSection(
+    state: GitStatusScreenState,
+    projects: List<ProjectSummary>,
+    callbacks: GitStatusCallbacks,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle(title = state.title, subtitle = state.subtitle)
+        if (state.projectId == null && projects.isNotEmpty()) {
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("git-open-first-project"),
+                onClick = { callbacks.onOpenProject(projects.first().id) },
+            ) {
+                Text("Open ${projects.first().name}")
+            }
+        }
+        when {
+            state.isLoading -> Text("Loading git status...")
+            state.errorMessage != null -> Text(
+                text = state.errorMessage,
+                color = MaterialTheme.colorScheme.error,
+            )
+            state.status == null -> EmptyStateCard(
+                title = "No git status loaded",
+                body = "Choose a project to inspect its working tree.",
+            )
+            state.status.isGitRepo.not() -> EmptyStateCard(
+                title = "Not a git repository",
+                body = "This project has no git status surface.",
+            )
+            else -> GitStatusContent(
+                state = state,
+                callbacks = callbacks,
+            )
+        }
+    }
+}
+
+@Composable
+private fun GitStatusContent(
+    state: GitStatusScreenState,
+    callbacks: GitStatusCallbacks,
+) {
+    val status = state.status ?: return
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("git-status-summary"),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(status.branch ?: "Detached HEAD", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = buildList {
+                        status.upstream?.let { add(it) }
+                        if (status.ahead > 0) add("ahead ${status.ahead}")
+                        if (status.behind > 0) add("behind ${status.behind}")
+                        add(if (status.isClean) "clean" else "dirty")
+                    }.joinToString(" • "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        SectionList(
+            title = "Changed files",
+            subtitle = "${status.files.size} file${if (status.files.size == 1) "" else "s"}",
+            items = status.files,
+            emptyState = SectionEmptyState(
+                title = "Working tree clean",
+                body = "No changed files for this project.",
+            ),
+        ) { file ->
+            ListCard(
+                title = file.path,
+                subtitle = file.gitFileSubtitle(),
+                trailing = if (state.selectedFile?.path == file.path) "Open" else null,
+                onClick = { callbacks.onOpenDiff(file) },
+            )
+        }
+        GitDiffCard(state = state, callbacks = callbacks)
+    }
+}
+
+private fun GitFileChange.gitFileSubtitle(): String {
+    return buildList {
+        add(status)
+        add(if (staged) "staged" else "unstaged")
+        linesAdded?.let { add("+$it") }
+        linesDeleted?.let { add("-$it") }
+        origPath?.let { add("from $it") }
+    }.joinToString(" • ")
+}
+
+@Composable
+private fun GitDiffCard(
+    state: GitStatusScreenState,
+    callbacks: GitStatusCallbacks,
+) {
+    val selectedFile = state.selectedFile ?: return
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("git-diff-viewer"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(selectedFile.path, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            Button(
+                modifier = Modifier.testTag("git-diff-full-context"),
+                enabled = !state.isLoadingDiff && !state.showFullContext,
+                onClick = callbacks.onLoadFullContext,
+            ) {
+                Text(if (state.isLoadingDiff) "Loading" else "Full context")
+            }
+            state.diff?.let { diff ->
+                Text(
+                    text = diff.structuredPatch.flatMap { it.lines }.joinToString("\n").ifBlank { diff.diffHtml },
+                    modifier = Modifier.testTag("git-diff-content"),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SessionsFilterPanel(
     filters: GlobalSessionFilters,
     stats: GlobalSessionStats,
@@ -1201,6 +1438,7 @@ private fun InboxItemCard(
 private fun ActiveSessionSection(
     state: ActiveSessionScreenState,
     callbacks: ActiveSessionCallbacks,
+    onFileSelected: (String) -> Unit,
 ) {
     val actionsEnabled = state.timeline.connectionStatus == RelayConnectionStatus.CONNECTED
 
@@ -1266,7 +1504,10 @@ private fun ActiveSessionSection(
                 body = "New messages will appear here after reconnect and refresh.",
             ),
         ) { message ->
-            MessageCard(message)
+            MessageCard(
+                message = message,
+                onFileSelected = onFileSelected,
+            )
         }
     }
 }
@@ -1514,7 +1755,7 @@ private fun SubagentSection(
                     body = "This subagent has no messages available yet.",
                 ),
             ) { message ->
-                MessageCard(message)
+                    MessageCard(message)
             }
         }
     }
@@ -1897,7 +2138,10 @@ private fun PendingRequestCard(
 }
 
 @Composable
-private fun MessageCard(message: SessionMessage) {
+private fun MessageCard(
+    message: SessionMessage,
+    onFileSelected: (String) -> Unit = {},
+) {
     val accent = when (message.author) {
         SessionMessageAuthor.USER -> MaterialTheme.colorScheme.primaryContainer
         SessionMessageAuthor.ASSISTANT -> MaterialTheme.colorScheme.secondaryContainer
@@ -1922,6 +2166,7 @@ private fun MessageCard(message: SessionMessage) {
                 MessageContentBlockView(
                     blockId = "${message.id}-$index",
                     block = block,
+                    onFileSelected = onFileSelected,
                 )
             }
             Text(
@@ -1937,6 +2182,7 @@ private fun MessageCard(message: SessionMessage) {
 private fun MessageContentBlockView(
     blockId: String,
     block: MessageContentBlock,
+    onFileSelected: (String) -> Unit,
 ) {
     when (block) {
         is MessageContentBlock.Text -> PlainMessageBlock(
@@ -1958,10 +2204,10 @@ private fun MessageContentBlockView(
             label = if (block.isError) "Tool result error" else "Tool result",
             text = block.content,
         )
-        is MessageContentBlock.FileOperation -> CollapsibleMessageBlock(
+        is MessageContentBlock.FileOperation -> FileOperationMessageBlock(
             blockId = blockId,
-            label = "${block.operation.replaceFirstChar(Char::titlecase)}: ${block.path}",
-            text = block.content ?: block.path,
+            block = block,
+            onFileSelected = onFileSelected,
         )
         is MessageContentBlock.WebReference -> LabeledMessageBlock(
             blockId = blockId,
@@ -2027,6 +2273,33 @@ private fun LabeledMessageBlock(
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FileOperationMessageBlock(
+    blockId: String,
+    block: MessageContentBlock.FileOperation,
+    onFileSelected: (String) -> Unit,
+) {
+    MessageBlockContainer(blockId = blockId) {
+        Text(
+            text = "${block.operation.replaceFirstChar(Char::titlecase)}: ${block.path}",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        Button(
+            modifier = Modifier.testTag("message-file-link-$blockId"),
+            onClick = { onFileSelected(block.path) },
+        ) {
+            Text("Open file")
+        }
+        block.content?.takeIf { it.isNotBlank() }?.let { content ->
+            Text(
+                text = content,
+                style = MaterialTheme.typography.bodyMedium,
             )
         }
     }

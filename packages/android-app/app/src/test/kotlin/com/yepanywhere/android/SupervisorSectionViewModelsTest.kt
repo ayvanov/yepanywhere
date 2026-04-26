@@ -4,6 +4,11 @@ import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.InboxTier
 import com.yepanywhere.android.core.model.AgentProcessesPage
+import com.yepanywhere.android.core.model.FileContent
+import com.yepanywhere.android.core.model.FileMetadata
+import com.yepanywhere.android.core.model.GitDiffResult
+import com.yepanywhere.android.core.model.GitFileChange
+import com.yepanywhere.android.core.model.GitStatusInfo
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
@@ -12,11 +17,14 @@ import com.yepanywhere.android.core.model.NewSessionOptions
 import com.yepanywhere.android.core.model.NewSessionSettings
 import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.ProjectSummary
+import com.yepanywhere.android.core.model.PatchHunk
 import com.yepanywhere.android.core.model.SessionProcessInfo
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.repository.InboxRepository
+import com.yepanywhere.android.core.repository.FilesRepository
+import com.yepanywhere.android.core.repository.GitRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
 import com.yepanywhere.android.core.repository.SessionsRepository
 import com.yepanywhere.android.core.usecase.ObserveInboxUseCase
@@ -312,6 +320,46 @@ class SupervisorSectionViewModelsTest {
     }
 
     @Test
+    fun fileAndGitViewModelsLoadContentStatusAndExpandedDiff() = runTest {
+        val filesRepository = FakeFilesRepository()
+        val gitRepository = FakeGitRepository()
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val fileViewModel = FileScreenViewModel(
+            filesRepository = filesRepository,
+            scope = externalScope,
+        )
+        val gitViewModel = GitStatusScreenViewModel(
+            gitRepository = gitRepository,
+            scope = externalScope,
+        )
+        val jobs = listOf(
+            externalScope.launch { fileViewModel.uiState.collect {} },
+            externalScope.launch { gitViewModel.uiState.collect {} },
+        )
+
+        fileViewModel.openFile(projectId = "project-yep", path = "src/Main.kt", highlight = true)
+        gitViewModel.openProject("project-yep")
+        advanceUntilIdle()
+        gitViewModel.openDiff(path = "src/Main.kt", staged = false, status = "M")
+        advanceUntilIdle()
+        gitViewModel.loadFullContext()
+        advanceUntilIdle()
+
+        assertEquals("src/Main.kt", fileViewModel.uiState.value.file?.metadata?.path)
+        assertEquals("kotlin", fileViewModel.uiState.value.file?.highlightedLanguage)
+        assertEquals("project-yep", filesRepository.lastProjectId)
+        assertTrue(filesRepository.lastHighlight)
+        assertEquals("feature/android", gitViewModel.uiState.value.status?.branch)
+        assertEquals("src/Main.kt", gitViewModel.uiState.value.selectedFile?.path)
+        assertTrue(gitViewModel.uiState.value.diff?.structuredPatch?.first()?.lines?.any { it.startsWith("+") } == true)
+        assertTrue(gitViewModel.uiState.value.showFullContext)
+        assertTrue(gitRepository.lastFullContext)
+
+        jobs.forEach { it.cancel() }
+        externalScope.cancel()
+    }
+
+    @Test
     fun newSessionViewModelLoadsDefaultsAndStartsDirectOrTwoPhaseSession() = runTest {
         val projects = MutableStateFlow(
             listOf(ProjectSummary(id = "project-yep", name = "Yep Anywhere")),
@@ -512,6 +560,92 @@ class SupervisorSectionViewModelsTest {
 
         override suspend fun bulkMarkUnread(sessionIds: Set<String>) {
             unread += sessionIds
+        }
+    }
+
+    private class FakeFilesRepository : FilesRepository {
+        var lastProjectId: String? = null
+        var lastPath: String? = null
+        var lastHighlight: Boolean = false
+
+        override suspend fun loadFile(
+            projectId: String,
+            path: String,
+            highlight: Boolean,
+        ): FileContent {
+            lastProjectId = projectId
+            lastPath = path
+            lastHighlight = highlight
+            return FileContent(
+                metadata = FileMetadata(
+                    path = path,
+                    size = 24,
+                    mimeType = "text/kotlin",
+                    isText = true,
+                ),
+                rawUrl = "/api/projects/$projectId/files/raw?path=$path",
+                content = "val version = 2",
+                highlightedHtml = "<pre>val version = 2</pre>",
+                highlightedLanguage = "kotlin",
+            )
+        }
+    }
+
+    private class FakeGitRepository : GitRepository {
+        var lastFullContext: Boolean = false
+
+        override suspend fun loadGitStatus(projectId: String): GitStatusInfo {
+            return GitStatusInfo(
+                isGitRepo = true,
+                branch = "feature/android",
+                upstream = "origin/main",
+                ahead = 1,
+                behind = 0,
+                isClean = false,
+                files = listOf(
+                    GitFileChange(
+                        path = "src/Main.kt",
+                        status = "M",
+                        staged = false,
+                        linesAdded = 2,
+                        linesDeleted = 1,
+                    ),
+                ),
+            )
+        }
+
+        override suspend fun loadGitDiff(
+            projectId: String,
+            path: String,
+            staged: Boolean,
+            status: String,
+            fullContext: Boolean,
+        ): GitDiffResult {
+            lastFullContext = fullContext
+            return diffResult(fullContext)
+        }
+
+        override suspend fun expandDiffContext(
+            projectId: String,
+            filePath: String,
+            oldString: String,
+            newString: String,
+            originalFile: String,
+        ): GitDiffResult = diffResult(fullContext = true)
+
+        private fun diffResult(fullContext: Boolean): GitDiffResult {
+            return GitDiffResult(
+                diffHtml = if (fullContext) "full context version" else "short version",
+                structuredPatch = listOf(
+                    PatchHunk(
+                        oldStart = 1,
+                        oldLines = 1,
+                        newStart = 1,
+                        newLines = 1,
+                        lines = listOf("-val version = 1", "+val version = 2"),
+                    ),
+                ),
+            )
         }
     }
 

@@ -338,6 +338,56 @@ data class AgentSession(
     val status: String? = null,
 )
 
+data class FileMetadata(
+    val path: String,
+    val size: Long,
+    val mimeType: String,
+    val isText: Boolean,
+)
+
+data class FileContent(
+    val metadata: FileMetadata,
+    val rawUrl: String,
+    val content: String? = null,
+    val highlightedHtml: String? = null,
+    val highlightedLanguage: String? = null,
+    val highlightedTruncated: Boolean = false,
+    val renderedMarkdownHtml: String? = null,
+)
+
+data class PatchHunk(
+    val oldStart: Int,
+    val oldLines: Int,
+    val newStart: Int,
+    val newLines: Int,
+    val lines: List<String>,
+)
+
+data class GitFileChange(
+    val path: String,
+    val status: String,
+    val staged: Boolean,
+    val linesAdded: Int? = null,
+    val linesDeleted: Int? = null,
+    val origPath: String? = null,
+)
+
+data class GitStatusInfo(
+    val isGitRepo: Boolean,
+    val branch: String? = null,
+    val upstream: String? = null,
+    val ahead: Int = 0,
+    val behind: Int = 0,
+    val isClean: Boolean = true,
+    val files: List<GitFileChange> = emptyList(),
+)
+
+data class GitDiffResult(
+    val diffHtml: String = "",
+    val structuredPatch: List<PatchHunk> = emptyList(),
+    val markdownHtml: String? = null,
+)
+
 data class ProcessModelOption(
     val id: String,
     val name: String,

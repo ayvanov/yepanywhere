@@ -6,6 +6,11 @@ import com.yepanywhere.android.core.model.InboxTier
 import com.yepanywhere.android.core.model.AgentMapping
 import com.yepanywhere.android.core.model.AgentProcessesPage
 import com.yepanywhere.android.core.model.AgentSession
+import com.yepanywhere.android.core.model.FileContent
+import com.yepanywhere.android.core.model.FileMetadata
+import com.yepanywhere.android.core.model.GitDiffResult
+import com.yepanywhere.android.core.model.GitFileChange
+import com.yepanywhere.android.core.model.GitStatusInfo
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
@@ -14,6 +19,7 @@ import com.yepanywhere.android.core.model.NewSessionOptions
 import com.yepanywhere.android.core.model.NewSessionSettings
 import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.PendingInputRequest
+import com.yepanywhere.android.core.model.PatchHunk
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.ProcessControlResult
 import com.yepanywhere.android.core.model.ProcessModelOption
@@ -36,6 +42,8 @@ import com.yepanywhere.android.core.model.SupervisorPushPayload
 import com.yepanywhere.android.core.model.SupervisorPushEventStreamAdapter
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.core.repository.ApprovalsRepository
+import com.yepanywhere.android.core.repository.FilesRepository
+import com.yepanywhere.android.core.repository.GitRepository
 import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
 import com.yepanywhere.android.core.repository.RelayAuthRepository
@@ -208,6 +216,83 @@ class InMemorySupervisorRuntime(
         override suspend fun refreshInbox() {
             connectionState.value = RelayConnectionStatus.SYNCING
             connectionState.value = RelayConnectionStatus.CONNECTED
+        }
+    }
+
+    override val filesRepository: FilesRepository = object : FilesRepository {
+        override suspend fun loadFile(
+            projectId: String,
+            path: String,
+            highlight: Boolean,
+        ): FileContent {
+            val content = "package demo\n\n// $projectId\nval filePath = \"$path\"\n"
+            return FileContent(
+                metadata = FileMetadata(
+                    path = path,
+                    size = content.length.toLong(),
+                    mimeType = "text/plain",
+                    isText = true,
+                ),
+                rawUrl = "/api/projects/$projectId/files/raw?path=$path",
+                content = content,
+                highlightedHtml = content.takeIf { highlight },
+                highlightedLanguage = path.substringAfterLast('.', "text"),
+            )
+        }
+    }
+
+    override val gitRepository: GitRepository = object : GitRepository {
+        override suspend fun loadGitStatus(projectId: String): GitStatusInfo {
+            return GitStatusInfo(
+                isGitRepo = true,
+                branch = "demo",
+                upstream = "origin/demo",
+                isClean = false,
+                files = listOf(
+                    GitFileChange(
+                        path = "src/Main.kt",
+                        status = "M",
+                        staged = false,
+                        linesAdded = 2,
+                        linesDeleted = 1,
+                    ),
+                ),
+            )
+        }
+
+        override suspend fun loadGitDiff(
+            projectId: String,
+            path: String,
+            staged: Boolean,
+            status: String,
+            fullContext: Boolean,
+        ): GitDiffResult {
+            return demoDiff(path)
+        }
+
+        override suspend fun expandDiffContext(
+            projectId: String,
+            filePath: String,
+            oldString: String,
+            newString: String,
+            originalFile: String,
+        ): GitDiffResult {
+            return demoDiff(filePath)
+        }
+
+        private fun demoDiff(path: String): GitDiffResult {
+            return GitDiffResult(
+                diffHtml = "@@ $path @@\n-val version = 1\n+val version = 2",
+                structuredPatch = listOf(
+                    PatchHunk(
+                        oldStart = 1,
+                        oldLines = 1,
+                        newStart = 1,
+                        newLines = 1,
+                        lines = listOf("-val version = 1", "+val version = 2"),
+                    ),
+                ),
+            )
         }
     }
 

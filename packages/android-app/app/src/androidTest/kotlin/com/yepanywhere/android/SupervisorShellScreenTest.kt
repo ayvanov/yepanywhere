@@ -18,12 +18,18 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yepanywhere.android.core.model.AgentMapping
 import com.yepanywhere.android.core.model.AgentSession
+import com.yepanywhere.android.core.model.FileContent
+import com.yepanywhere.android.core.model.FileMetadata
+import com.yepanywhere.android.core.model.GitDiffResult
+import com.yepanywhere.android.core.model.GitFileChange
+import com.yepanywhere.android.core.model.GitStatusInfo
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.InboxTier
 import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.PendingSessionMessage
+import com.yepanywhere.android.core.model.PatchHunk
 import com.yepanywhere.android.core.model.ProcessModelOption
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
@@ -39,6 +45,9 @@ import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.ui.ActiveSessionCallbacks
 import com.yepanywhere.android.ui.ActiveSessionScreenState
 import com.yepanywhere.android.ui.AgentsScreenState
+import com.yepanywhere.android.ui.FileScreenState
+import com.yepanywhere.android.ui.GitStatusCallbacks
+import com.yepanywhere.android.ui.GitStatusScreenState
 import com.yepanywhere.android.ui.InboxScreenState
 import com.yepanywhere.android.ui.ProjectsScreenState
 import com.yepanywhere.android.ui.SessionsScreenState
@@ -880,6 +889,126 @@ class SupervisorShellScreenTest {
         }
     }
 
+    @Test
+    fun fileSectionRendersHighlightedContent() {
+        renderShell(
+            shellState = shellState(selectedSection = SupervisorShellSection.FILE),
+            fileState = FileScreenState(
+                projectId = "project-1",
+                path = "src/Main.kt",
+                file = FileContent(
+                    metadata = FileMetadata(
+                        path = "src/Main.kt",
+                        size = 24,
+                        mimeType = "text/kotlin",
+                        isText = true,
+                    ),
+                    rawUrl = "/api/projects/project-1/files/raw?path=src%2FMain.kt",
+                    content = "val version = 2",
+                    highlightedLanguage = "kotlin",
+                ),
+            ),
+        )
+
+        composeRule.onNodeWithTag("file-viewer")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("file-highlight-language")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun gitSectionRendersStatusDiffAndFullContextAction() {
+        var openedDiffPath: String? = null
+        var fullContextLoaded = false
+
+        renderShell(
+            shellState = shellState(selectedSection = SupervisorShellSection.GIT_STATUS),
+            gitStatusState = GitStatusScreenState(
+                projectId = "project-1",
+                status = GitStatusInfo(
+                    isGitRepo = true,
+                    branch = "feature/android",
+                    upstream = "origin/main",
+                    isClean = false,
+                    files = listOf(
+                        GitFileChange(
+                            path = "src/Main.kt",
+                            status = "M",
+                            staged = false,
+                            linesAdded = 2,
+                            linesDeleted = 1,
+                        ),
+                    ),
+                ),
+                selectedFile = GitFileChange(path = "src/Main.kt", status = "M", staged = false),
+                diff = GitDiffResult(
+                    structuredPatch = listOf(
+                        PatchHunk(
+                            oldStart = 1,
+                            oldLines = 1,
+                            newStart = 1,
+                            newLines = 1,
+                            lines = listOf("-val version = 1", "+val version = 2"),
+                        ),
+                    ),
+                ),
+            ),
+            gitStatusCallbacks = GitStatusCallbacks(
+                onOpenDiff = { openedDiffPath = it.path },
+                onLoadFullContext = { fullContextLoaded = true },
+            ),
+        )
+
+        composeRule.onNodeWithTag("git-status-summary")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("feature/android")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("M • unstaged • +2 • -1")
+            .performClick()
+        composeRule.onNodeWithTag("git-diff-full-context")
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals("src/Main.kt", openedDiffPath)
+            assertEquals(true, fullContextLoaded)
+        }
+    }
+
+    @Test
+    fun messageFileOperationDispatchesFileRoute() {
+        var openedFilePath: String? = null
+
+        renderShell(
+            activeSessionState = activeSessionState(
+                pendingRequests = emptyList(),
+                timeline = timeline().copy(
+                    messages = listOf(
+                        SessionMessage(
+                            id = "msg-file",
+                            author = SessionMessageAuthor.ASSISTANT,
+                            body = "Read file",
+                            timestampLabel = "now",
+                            blocks = listOf(
+                                MessageContentBlock.FileOperation(
+                                    operation = "read",
+                                    path = "src/Main.kt",
+                                    content = "val version = 2",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            onFileSelected = { openedFilePath = it },
+        )
+
+        scrollShellTo("message-file-link-msg-file-0")
+        composeRule.onNodeWithTag("message-file-link-msg-file-0")
+            .performClick()
+        composeRule.runOnIdle {
+            assertEquals("src/Main.kt", openedFilePath)
+        }
+    }
+
     private fun renderShell(
         shellState: SupervisorShellScreenState = shellState(),
         projectsState: ProjectsScreenState = projectsState(),
@@ -887,6 +1016,9 @@ class SupervisorShellScreenTest {
         inboxState: InboxScreenState = inboxState(),
         activeSessionState: ActiveSessionScreenState = activeSessionState(),
         agentsState: AgentsScreenState = AgentsScreenState(),
+        fileState: FileScreenState = FileScreenState(),
+        gitStatusState: GitStatusScreenState = GitStatusScreenState(),
+        gitStatusCallbacks: GitStatusCallbacks = GitStatusCallbacks(),
         callbacks: ActiveSessionCallbacks = ActiveSessionCallbacks(
             onSendReply = {},
             onApproveRequest = {},
@@ -896,6 +1028,7 @@ class SupervisorShellScreenTest {
         onSectionSelected: (SupervisorShellSection) -> Unit = {},
         onProjectSelected: (String) -> Unit = {},
         onSessionSelected: (projectId: String, sessionId: String) -> Unit = { _, _ -> },
+        onFileSelected: (String) -> Unit = {},
         onInboxProjectSelected: (String?) -> Unit = {},
         onInboxMarkRead: (String) -> Unit = {},
         onInboxMarkUnread: (String) -> Unit = {},
@@ -909,10 +1042,14 @@ class SupervisorShellScreenTest {
                 agentsState = agentsState,
                 inboxState = inboxState,
                 activeSessionState = activeSessionState,
+                fileState = fileState,
+                gitStatusState = gitStatusState,
                 activeSessionCallbacks = callbacks,
+                gitStatusCallbacks = gitStatusCallbacks,
                 onSectionSelected = onSectionSelected,
                 onProjectSelected = onProjectSelected,
                 onSessionSelected = onSessionSelected,
+                onFileSelected = onFileSelected,
                 onInboxProjectSelected = onInboxProjectSelected,
                 onInboxMarkRead = onInboxMarkRead,
                 onInboxMarkUnread = onInboxMarkUnread,

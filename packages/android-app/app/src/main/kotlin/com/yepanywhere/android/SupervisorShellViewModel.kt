@@ -73,6 +73,19 @@ class SupervisorShellViewModel(
         selectedSection.value = SupervisorShellSection.ACTIVE
     }
 
+    fun selectFile(path: String) {
+        selectedFilePath.value = path
+        selectedDeviceId.value = null
+        selectedSection.value = SupervisorShellSection.FILE
+    }
+
+    fun selectGitStatus(projectId: String? = selectedProjectId.value) {
+        projectId?.let { selectedProjectId.value = it }
+        selectedFilePath.value = null
+        selectedDeviceId.value = null
+        selectedSection.value = SupervisorShellSection.GIT_STATUS
+    }
+
     fun applyNotificationRoute(route: AndroidNotificationRoute) {
         selectedProjectId.value = route.projectId
         selectedSessionId.value = route.sessionId

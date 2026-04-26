@@ -4,6 +4,9 @@ import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.AgentMapping
 import com.yepanywhere.android.core.model.AgentProcessesPage
 import com.yepanywhere.android.core.model.AgentSession
+import com.yepanywhere.android.core.model.FileContent
+import com.yepanywhere.android.core.model.GitDiffResult
+import com.yepanywhere.android.core.model.GitStatusInfo
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.ProcessControlResult
 import com.yepanywhere.android.core.model.ProcessModelOption
@@ -83,6 +86,34 @@ interface InboxRepository {
     fun observeInboxItems(): Flow<List<InboxItem>>
 
     suspend fun refreshInbox()
+}
+
+interface FilesRepository {
+    suspend fun loadFile(
+        projectId: String,
+        path: String,
+        highlight: Boolean = false,
+    ): FileContent
+}
+
+interface GitRepository {
+    suspend fun loadGitStatus(projectId: String): GitStatusInfo
+
+    suspend fun loadGitDiff(
+        projectId: String,
+        path: String,
+        staged: Boolean,
+        status: String,
+        fullContext: Boolean = false,
+    ): GitDiffResult
+
+    suspend fun expandDiffContext(
+        projectId: String,
+        filePath: String,
+        oldString: String,
+        newString: String,
+        originalFile: String,
+    ): GitDiffResult
 }
 
 interface SessionsRepository {

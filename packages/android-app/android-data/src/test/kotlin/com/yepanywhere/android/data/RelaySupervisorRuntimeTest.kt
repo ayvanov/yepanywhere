@@ -702,6 +702,74 @@ class RelaySupervisorRuntimeTest {
     }
 
     @Test
+    fun fileAndGitRepositoriesUseWebParityEndpoints() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        val file = runtime.filesRepository.loadFile(
+            projectId = "project-1",
+            path = "src/Main.kt",
+            highlight = true,
+        )
+        val gitStatus = runtime.gitRepository.loadGitStatus("project-1")
+        val diff = runtime.gitRepository.loadGitDiff(
+            projectId = "project-1",
+            path = "src/Main.kt",
+            staged = false,
+            status = "M",
+            fullContext = true,
+        )
+        val expanded = runtime.gitRepository.expandDiffContext(
+            projectId = "project-1",
+            filePath = "src/Main.kt",
+            oldString = "val version = 1",
+            newString = "val version = 2",
+            originalFile = "val version = 1\n",
+        )
+
+        assertEquals("src/Main.kt", file.metadata.path)
+        assertEquals("kotlin", file.highlightedLanguage)
+        assertEquals("feature/android", gitStatus.branch)
+        assertEquals(listOf("src/Main.kt"), gitStatus.files.map { it.path })
+        assertTrue(diff.structuredPatch.first().lines.any { it.startsWith("+") })
+        assertTrue(expanded.diffHtml.contains("version"))
+        assertTrue(
+            gateway.requests.any { request ->
+                request.method == "GET" &&
+                    request.path == "/projects/project-1/files?path=src%2FMain.kt&highlight=true"
+            },
+        )
+        assertEquals("GET", gateway.recordedRequest("GET", "/projects/project-1/git").method)
+        assertEquals(
+            jsonObject(
+                "path" to JsonPrimitive("src/Main.kt"),
+                "staged" to JsonPrimitive(false),
+                "status" to JsonPrimitive("M"),
+                "fullContext" to JsonPrimitive(true),
+            ),
+            gateway.recordedRequest("POST", "/projects/project-1/git/diff").body,
+        )
+        assertEquals(
+            jsonObject(
+                "filePath" to JsonPrimitive("src/Main.kt"),
+                "oldString" to JsonPrimitive("val version = 1"),
+                "newString" to JsonPrimitive("val version = 2"),
+                "originalFile" to JsonPrimitive("val version = 1\n"),
+            ),
+            gateway.recordedRequest("POST", "/projects/project-1/diff/expand").body,
+        )
+    }
+
+    @Test
     fun approveRequestHitsBackendInputEndpoint() = runTest(UnconfinedTestDispatcher()) {
         val gateway = FakeRelayRealtimeGateway()
         val runtime = RelaySupervisorRuntime(
@@ -1005,6 +1073,15 @@ class RelaySupervisorRuntimeTest {
             }
             if (method == "DELETE" && path == "/sessions/global-1/mark-seen") {
                 return jsonObject("accepted" to JsonPrimitive(true))
+            }
+            if (method == "GET" && path == "/projects/project-1/files?path=src%2FMain.kt&highlight=true") {
+                return fileContentResponse()
+            }
+            if (method == "POST" && path == "/projects/project-1/git/diff") {
+                return gitDiffResponse()
+            }
+            if (method == "POST" && path == "/projects/project-1/diff/expand") {
+                return gitDiffResponse()
             }
             if (method == "GET" && path == "/settings") {
                 return jsonObject(
@@ -1341,6 +1418,25 @@ class RelaySupervisorRuntimeTest {
                 "success" to JsonPrimitive(true),
                 "model" to JsonPrimitive("opus"),
             )
+            "/projects/project-1/git" -> jsonObject(
+                "isGitRepo" to JsonPrimitive(true),
+                "branch" to JsonPrimitive("feature/android"),
+                "upstream" to JsonPrimitive("origin/main"),
+                "ahead" to JsonPrimitive(2),
+                "behind" to JsonPrimitive(1),
+                "isClean" to JsonPrimitive(false),
+                "files" to JsonArray(
+                    listOf(
+                        jsonObject(
+                            "path" to JsonPrimitive("src/Main.kt"),
+                            "status" to JsonPrimitive("M"),
+                            "staged" to JsonPrimitive(false),
+                            "linesAdded" to JsonPrimitive(3),
+                            "linesDeleted" to JsonPrimitive(1),
+                        ),
+                    ),
+                ),
+            )
             "/processes?includeTerminated=true" -> jsonObject(
                 "processes" to JsonArray(
                     listOf(
@@ -1448,6 +1544,44 @@ class RelaySupervisorRuntimeTest {
                     "unread" to JsonPrimitive(3),
                     "starred" to JsonPrimitive(2),
                     "archived" to JsonPrimitive(1),
+                ),
+            )
+        }
+
+        private fun fileContentResponse(): JsonObject {
+            return jsonObject(
+                "metadata" to jsonObject(
+                    "path" to JsonPrimitive("src/Main.kt"),
+                    "size" to JsonPrimitive(42),
+                    "mimeType" to JsonPrimitive("text/kotlin"),
+                    "isText" to JsonPrimitive(true),
+                ),
+                "rawUrl" to JsonPrimitive("/api/projects/project-1/files/raw?path=src%2FMain.kt"),
+                "content" to JsonPrimitive("val version = 2"),
+                "highlightedHtml" to JsonPrimitive("<pre>val version = 2</pre>"),
+                "highlightedLanguage" to JsonPrimitive("kotlin"),
+                "highlightedTruncated" to JsonPrimitive(false),
+            )
+        }
+
+        private fun gitDiffResponse(): JsonObject {
+            return jsonObject(
+                "diffHtml" to JsonPrimitive("<pre>-val version = 1\n+val version = 2</pre>"),
+                "structuredPatch" to JsonArray(
+                    listOf(
+                        jsonObject(
+                            "oldStart" to JsonPrimitive(1),
+                            "oldLines" to JsonPrimitive(1),
+                            "newStart" to JsonPrimitive(1),
+                            "newLines" to JsonPrimitive(1),
+                            "lines" to JsonArray(
+                                listOf(
+                                    JsonPrimitive("-val version = 1"),
+                                    JsonPrimitive("+val version = 2"),
+                                ),
+                            ),
+                        ),
+                    ),
                 ),
             )
         }

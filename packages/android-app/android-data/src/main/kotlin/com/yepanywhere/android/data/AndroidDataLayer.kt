@@ -6,6 +6,8 @@ import com.yepanywhere.android.core.model.SupervisorPushEvent
 import com.yepanywhere.android.core.model.SupervisorPushPayload
 import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.repository.ApprovalsRepository
+import com.yepanywhere.android.core.repository.FilesRepository
+import com.yepanywhere.android.core.repository.GitRepository
 import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
 import com.yepanywhere.android.core.repository.RelayConnectionClient
@@ -30,6 +32,8 @@ interface SupervisorFeatureDependencies {
     val activeSessionId: String
     val projectsRepository: ProjectsRepository
     val sessionsRepository: SessionsRepository
+    val filesRepository: FilesRepository
+    val gitRepository: GitRepository
     val inboxRepository: InboxRepository
     val approvalsRepository: ApprovalsRepository
 }
@@ -72,6 +76,8 @@ class AndroidDataLayer(
     override val activeSessionId: String = runtime.activeSessionId
     override val projectsRepository: ProjectsRepository = runtime.projectsRepository
     override val sessionsRepository: SessionsRepository = runtime.sessionsRepository
+    override val filesRepository: FilesRepository = runtime.filesRepository
+    override val gitRepository: GitRepository = runtime.gitRepository
     override val inboxRepository: InboxRepository = runtime.inboxRepository
     override val approvalsRepository: ApprovalsRepository = runtime.approvalsRepository
     val relayConnectionClient: RelayConnectionClient = runtime.relayConnectionClient

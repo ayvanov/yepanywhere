@@ -96,6 +96,14 @@ class AndroidAppContainer(
         )
     }
 
+    fun createFileScreenViewModelFactory(): ViewModelProvider.Factory {
+        return FileScreenViewModel.factory(androidDataLayer.filesRepository)
+    }
+
+    fun createGitStatusScreenViewModelFactory(): ViewModelProvider.Factory {
+        return GitStatusScreenViewModel.factory(androidDataLayer.gitRepository)
+    }
+
     fun createInboxScreenViewModelFactory(): ViewModelProvider.Factory {
         return InboxScreenViewModel.factory(
             observeInboxUseCase = observeInboxUseCase,

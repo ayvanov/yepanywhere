@@ -4,6 +4,11 @@ import com.yepanywhere.android.core.cache.SessionCacheStore
 import com.yepanywhere.android.core.model.AgentMapping
 import com.yepanywhere.android.core.model.AgentProcessesPage
 import com.yepanywhere.android.core.model.AgentSession
+import com.yepanywhere.android.core.model.FileContent
+import com.yepanywhere.android.core.model.FileMetadata
+import com.yepanywhere.android.core.model.GitDiffResult
+import com.yepanywhere.android.core.model.GitFileChange
+import com.yepanywhere.android.core.model.GitStatusInfo
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
@@ -16,6 +21,7 @@ import com.yepanywhere.android.core.model.NewSessionOptions
 import com.yepanywhere.android.core.model.NewSessionSettings
 import com.yepanywhere.android.core.model.NewSessionStartResult
 import com.yepanywhere.android.core.model.PendingInputRequest
+import com.yepanywhere.android.core.model.PatchHunk
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.ProcessControlResult
 import com.yepanywhere.android.core.model.ProcessModelOption
@@ -41,6 +47,8 @@ import com.yepanywhere.android.core.model.SupervisorPushEventStreamAdapter
 import com.yepanywhere.android.core.model.SupervisorPushPayload
 import com.yepanywhere.android.core.model.SupervisorShellSnapshot
 import com.yepanywhere.android.core.repository.ApprovalsRepository
+import com.yepanywhere.android.core.repository.FilesRepository
+import com.yepanywhere.android.core.repository.GitRepository
 import com.yepanywhere.android.core.repository.InboxRepository
 import com.yepanywhere.android.core.repository.ProjectsRepository
 import com.yepanywhere.android.core.repository.RelayAuthRepository
@@ -80,6 +88,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -738,6 +747,78 @@ class RelaySupervisorRuntime(
         }
     }
 
+    override val filesRepository: FilesRepository = object : FilesRepository {
+        override suspend fun loadFile(
+            projectId: String,
+            path: String,
+            highlight: Boolean,
+        ): FileContent {
+            val params = buildList {
+                add("path" to path)
+                if (highlight) add("highlight" to "true")
+            }.joinToString("&") { (key, value) ->
+                "${key.urlEncode()}=${value.urlEncode()}"
+            }
+            val payload = requestObject(
+                method = "GET",
+                path = "/projects/$projectId/files?$params",
+            )
+            return payload.toFileContent()
+        }
+    }
+
+    override val gitRepository: GitRepository = object : GitRepository {
+        override suspend fun loadGitStatus(projectId: String): GitStatusInfo {
+            val payload = requestObject(
+                method = "GET",
+                path = "/projects/$projectId/git",
+            )
+            return payload.toGitStatusInfo()
+        }
+
+        override suspend fun loadGitDiff(
+            projectId: String,
+            path: String,
+            staged: Boolean,
+            status: String,
+            fullContext: Boolean,
+        ): GitDiffResult {
+            val payload = requestObject(
+                method = "POST",
+                path = "/projects/$projectId/git/diff",
+                body = buildJsonObject {
+                    put("path", path)
+                    put("staged", staged)
+                    put("status", status)
+                    if (fullContext) {
+                        put("fullContext", true)
+                    }
+                },
+            )
+            return payload.toGitDiffResult()
+        }
+
+        override suspend fun expandDiffContext(
+            projectId: String,
+            filePath: String,
+            oldString: String,
+            newString: String,
+            originalFile: String,
+        ): GitDiffResult {
+            val payload = requestObject(
+                method = "POST",
+                path = "/projects/$projectId/diff/expand",
+                body = buildJsonObject {
+                    put("filePath", filePath)
+                    put("oldString", oldString)
+                    put("newString", newString)
+                    put("originalFile", originalFile)
+                },
+            )
+            return payload.toGitDiffResult()
+        }
+    }
+
     override val approvalsRepository: ApprovalsRepository = object : ApprovalsRepository {
         override fun observePendingApprovals(): Flow<List<PendingInputRequest>> {
             return cache.observePendingRequests()
@@ -1254,6 +1335,10 @@ private fun JsonElement?.asInt(): Int? {
     return (this as? JsonPrimitive)?.intOrNull
 }
 
+private fun JsonElement?.asLong(): Long? {
+    return (this as? JsonPrimitive)?.longOrNull
+}
+
 private fun JsonElement?.asBoolean(): Boolean? {
     return (this as? JsonPrimitive)?.booleanOrNull
 }
@@ -1334,6 +1419,70 @@ private fun buildSessionDetailPath(
 
 private fun String.urlEncode(): String {
     return URLEncoder.encode(this, StandardCharsets.UTF_8.name())
+}
+
+private fun JsonObject.toFileContent(): FileContent {
+    val metadataObject = this["metadata"].asObject() ?: JsonObject(emptyMap())
+    return FileContent(
+        metadata = FileMetadata(
+            path = metadataObject["path"].asString() ?: "",
+            size = metadataObject["size"].asLong() ?: 0L,
+            mimeType = metadataObject["mimeType"].asString() ?: "application/octet-stream",
+            isText = metadataObject["isText"].asBoolean() ?: false,
+        ),
+        rawUrl = this["rawUrl"].asString() ?: "",
+        content = this["content"].asString(),
+        highlightedHtml = this["highlightedHtml"].asString(),
+        highlightedLanguage = this["highlightedLanguage"].asString(),
+        highlightedTruncated = this["highlightedTruncated"].asBoolean() ?: false,
+        renderedMarkdownHtml = this["renderedMarkdownHtml"].asString(),
+    )
+}
+
+private fun JsonObject.toGitStatusInfo(): GitStatusInfo {
+    return GitStatusInfo(
+        isGitRepo = this["isGitRepo"].asBoolean() ?: false,
+        branch = this["branch"].asString(),
+        upstream = this["upstream"].asString(),
+        ahead = this["ahead"].asInt() ?: 0,
+        behind = this["behind"].asInt() ?: 0,
+        isClean = this["isClean"].asBoolean() ?: true,
+        files = this["files"].asJsonArray().mapNotNull { element ->
+            element.asObject()?.toGitFileChange()
+        },
+    )
+}
+
+private fun JsonObject.toGitFileChange(): GitFileChange? {
+    val path = this["path"].asString() ?: return null
+    return GitFileChange(
+        path = path,
+        status = this["status"].asString() ?: "",
+        staged = this["staged"].asBoolean() ?: false,
+        linesAdded = this["linesAdded"].asInt(),
+        linesDeleted = this["linesDeleted"].asInt(),
+        origPath = this["origPath"].asString(),
+    )
+}
+
+private fun JsonObject.toGitDiffResult(): GitDiffResult {
+    return GitDiffResult(
+        diffHtml = this["diffHtml"].asString() ?: "",
+        structuredPatch = this["structuredPatch"].asJsonArray().mapNotNull { element ->
+            element.asObject()?.toPatchHunk()
+        },
+        markdownHtml = this["markdownHtml"].asString(),
+    )
+}
+
+private fun JsonObject.toPatchHunk(): PatchHunk {
+    return PatchHunk(
+        oldStart = this["oldStart"].asInt() ?: 0,
+        oldLines = this["oldLines"].asInt() ?: 0,
+        newStart = this["newStart"].asInt() ?: 0,
+        newLines = this["newLines"].asInt() ?: 0,
+        lines = this["lines"].asJsonArray().mapNotNull { it.asString() },
+    )
 }
 
 private fun JsonObject.toSessionSummary(fallbackProjectId: String? = null): SessionSummary? {
