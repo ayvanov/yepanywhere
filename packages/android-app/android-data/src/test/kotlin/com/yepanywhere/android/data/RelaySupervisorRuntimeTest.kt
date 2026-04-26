@@ -17,6 +17,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -170,10 +171,158 @@ class RelaySupervisorRuntimeTest {
 
         runtime.approvalsRepository.approve("request-1")
 
-        assertTrue(
-            gateway.requests.any { request ->
-                request.method == "POST" && request.path == "/sessions/session-1/input"
+        val request = gateway.recordedRequest("POST", "/sessions/session-1/input")
+        assertEquals(
+            jsonObject(
+                "requestId" to JsonPrimitive("request-1"),
+                "response" to JsonPrimitive("approve"),
+            ),
+            request.body,
+        )
+    }
+
+    @Test
+    fun sendReplyHitsBackendMessagesEndpointWithPayload() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = { username, _, relayUrl, _ ->
+                SecureRelayAuthHandshakeResult(
+                    session = RelaySession(
+                        username = username,
+                        relayUrl = relayUrl,
+                        sessionId = "relay-session-1",
+                    ),
+                    persistedSession = StoredRelaySession(
+                        wsUrl = relayUrl,
+                        username = username,
+                        sessionId = "relay-session-1",
+                        sessionKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                    ),
+                    clearedStoredSession = false,
+                    transportNonce = null,
+                    resumed = false,
+                )
             },
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        runtime.sessionsRepository.sendReply(
+            sessionId = "session-1",
+            text = "Reply from Android",
+        )
+
+        val request = gateway.recordedRequest("POST", "/sessions/session-1/messages")
+        assertEquals(
+            jsonObject("message" to JsonPrimitive("Reply from Android")),
+            request.body,
+        )
+    }
+
+    @Test
+    fun denyRequestHitsBackendInputEndpointWithPayload() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = { username, _, relayUrl, _ ->
+                SecureRelayAuthHandshakeResult(
+                    session = RelaySession(
+                        username = username,
+                        relayUrl = relayUrl,
+                        sessionId = "relay-session-1",
+                    ),
+                    persistedSession = StoredRelaySession(
+                        wsUrl = relayUrl,
+                        username = username,
+                        sessionId = "relay-session-1",
+                        sessionKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                    ),
+                    clearedStoredSession = false,
+                    transportNonce = null,
+                    resumed = false,
+                )
+            },
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        runtime.approvalsRepository.deny(
+            requestId = "request-1",
+            feedback = "Needs tests first",
+        )
+
+        val request = gateway.recordedRequest("POST", "/sessions/session-1/input")
+        assertEquals(
+            jsonObject(
+                "requestId" to JsonPrimitive("request-1"),
+                "response" to JsonPrimitive("deny"),
+                "feedback" to JsonPrimitive("Needs tests first"),
+            ),
+            request.body,
+        )
+    }
+
+    @Test
+    fun answerQuestionHitsBackendInputEndpointWithPayload() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = { username, _, relayUrl, _ ->
+                SecureRelayAuthHandshakeResult(
+                    session = RelaySession(
+                        username = username,
+                        relayUrl = relayUrl,
+                        sessionId = "relay-session-1",
+                    ),
+                    persistedSession = StoredRelaySession(
+                        wsUrl = relayUrl,
+                        username = username,
+                        sessionId = "relay-session-1",
+                        sessionKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                    ),
+                    clearedStoredSession = false,
+                    transportNonce = null,
+                    resumed = false,
+                )
+            },
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+        runtime.applyPendingInputNotification(
+            sessionId = "session-1",
+            projectId = "project-1",
+            projectName = "Yep Anywhere",
+            inputType = "user-question",
+            summary = "Which branch should continue?",
+            requestId = "question-1",
+        )
+
+        runtime.approvalsRepository.answerQuestion(
+            requestId = "question-1",
+            answer = "Use native Android MVP.",
+        )
+
+        val request = gateway.recordedRequest("POST", "/sessions/session-1/input")
+        assertEquals(
+            jsonObject(
+                "requestId" to JsonPrimitive("question-1"),
+                "response" to JsonPrimitive("approve"),
+                "answers" to jsonObject("answer" to JsonPrimitive("Use native Android MVP.")),
+            ),
+            request.body,
         )
     }
 
@@ -306,6 +455,14 @@ class RelaySupervisorRuntimeTest {
         override suspend fun subscribeActivity(): String = "sub-activity"
 
         override suspend fun unsubscribe(subscriptionId: String) = Unit
+
+        fun recordedRequest(method: String, path: String): RecordedRequest {
+            return assertNotNull(
+                requests.lastOrNull { request ->
+                    request.method == method && request.path == path
+                },
+            )
+        }
     }
 }
 

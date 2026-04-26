@@ -54,10 +54,10 @@ pwsh ./scripts/restore-relay-auth-state.ps1
 - Pass criteria: deep-link/intent payload selects expected section and triggers route-targeted refresh path.
 - Status: completed by unit coverage and connected emulator run.
 
-4. [~] Approve/deny/reply actions hit backend path
+4. [x] Approve/deny/reply actions hit backend path
 - Coverage: `RelaySupervisorRuntimeTest`, `ActiveSessionViewModelTest`
 - Pass criteria: `/sessions/:id/input` and reply endpoints are called with expected payload shape.
-- Status: partially completed. Implementation exists and command forwarding is covered, but `RelaySupervisorRuntimeTest` currently asserts exact backend path/payload only for approve. Add runtime assertions for reply, deny, and answer-question payloads before marking complete.
+- Status: completed on 2026-04-26. `RelaySupervisorRuntimeTest` asserts exact backend path/payload for approve, deny, reply, and answer-question flows.
 
 5. [x] Offline read-only snapshot behavior
 - Coverage: `RoomSessionCacheStoreTest`, active-session command gating in UI
