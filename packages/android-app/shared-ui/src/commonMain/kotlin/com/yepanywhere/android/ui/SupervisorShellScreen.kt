@@ -138,13 +138,15 @@ fun SupervisorShellScreen(
                     .testTag("supervisor-shell-scroll"),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                ShellHeader(
-                    title = state.title,
-                    subtitle = state.subtitle,
-                    onLogout = onLogout,
-                )
+                if (state.selectedSection != SupervisorShellSection.SESSIONS) {
+                    ShellHeader(
+                        title = state.title,
+                        subtitle = state.subtitle,
+                        onLogout = onLogout,
+                    )
 
-                SummaryStrip(snapshot = state.snapshot)
+                    SummaryStrip(snapshot = state.snapshot)
+                }
 
                 when (state.selectedSection) {
                     SupervisorShellSection.PROJECTS -> ProjectsSection(
@@ -156,6 +158,8 @@ fun SupervisorShellScreen(
                         state = sessionsState,
                         connectionStatus = state.snapshot.connectionStatus,
                         selectedProjectId = state.selectedProjectId,
+                        projects = projectsState.projects,
+                        onProjectSelected = onProjectSelected,
                     )
                     SupervisorShellSection.INBOX -> InboxSection(
                         state = inboxState,
@@ -290,6 +294,8 @@ private fun SessionsSection(
     state: SessionsScreenState,
     connectionStatus: RelayConnectionStatus,
     selectedProjectId: String?,
+    projects: List<ProjectSummary>,
+    onProjectSelected: (String) -> Unit,
 ) {
     val emptyState = listSectionEmptyState(
         connectionStatus = connectionStatus,
@@ -300,17 +306,77 @@ private fun SessionsSection(
     } else {
         state.sessions.filter { session -> session.projectId == selectedProjectId }
     }
-    SectionList(
-        title = state.title,
-        subtitle = state.subtitle,
-        items = sessions,
-        emptyState = emptyState,
-    ) { session ->
-        ListCard(
-            title = session.title,
-            subtitle = "${session.status.name.lowercase().replaceFirstChar(Char::titlecase)} • ${session.updatedLabel}",
-            trailing = if (session.hasUnread) "Unread" else null,
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SessionsProjectSelector(
+            projects = projects,
+            selectedProjectId = selectedProjectId,
+            onProjectSelected = onProjectSelected,
         )
+        SectionList(
+            title = state.title,
+            subtitle = state.subtitle,
+            items = sessions,
+            emptyState = emptyState,
+        ) { session ->
+            ListCard(
+                title = session.title,
+                subtitle = "${session.status.name.lowercase().replaceFirstChar(Char::titlecase)} • ${session.updatedLabel}",
+                trailing = if (session.hasUnread) "Unread" else null,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SessionsProjectSelector(
+    projects: List<ProjectSummary>,
+    selectedProjectId: String?,
+    onProjectSelected: (String) -> Unit,
+) {
+    val selectedProject = projects.firstOrNull { project -> project.id == selectedProjectId }
+    val alternateProjects = projects.filter { project -> project.id != selectedProjectId }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("sessions-project-selector"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Project",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = selectedProject?.name ?: "All projects",
+                modifier = Modifier.testTag("sessions-project-name"),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+
+            if (alternateProjects.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Choose another project",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    alternateProjects.forEach { project ->
+                        Button(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { onProjectSelected(project.id) },
+                        ) {
+                            Text(project.name)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

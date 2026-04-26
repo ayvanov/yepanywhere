@@ -334,6 +334,7 @@ class SupervisorShellScreenTest {
         renderShell(
             shellState = shellState(
                 selectedSection = SupervisorShellSection.SESSIONS,
+                selectedProjectId = "project-1",
                 sessions = listOf(
                     SessionSummary(
                         id = "session-1",
@@ -365,6 +366,80 @@ class SupervisorShellScreenTest {
             .assertIsDisplayed()
         composeRule.onAllNodesWithText("Unread")
             .assertCountEquals(2)
+    }
+
+    @Test
+    fun sessionsSectionHidesShellHeaderAndSummary() {
+        renderShell(
+            shellState = shellState(
+                selectedSection = SupervisorShellSection.SESSIONS,
+                selectedProjectId = "project-1",
+            ),
+        )
+
+        composeRule.onAllNodesWithText("Yep Anywhere Android")
+            .assertCountEquals(0)
+        composeRule.onAllNodesWithText("Android-owned cache/storage layer for Room, DataStore, and secure relay session persistence.")
+            .assertCountEquals(0)
+        composeRule.onAllNodesWithText("Connection")
+            .assertCountEquals(0)
+        composeRule.onAllNodesWithText("Attention")
+            .assertCountEquals(0)
+    }
+
+    @Test
+    fun sessionsSectionShowsProjectContextAndCanSelectAnotherProject() {
+        var selectedProjectId: String? = null
+
+        renderShell(
+            shellState = shellState(
+                selectedSection = SupervisorShellSection.SESSIONS,
+                selectedProjectId = "project-1",
+            ),
+            projectsState = projectsState(
+                projects = listOf(
+                    ProjectSummary(id = "project-1", name = "Yep Anywhere", isActive = true),
+                    ProjectSummary(id = "project-2", name = "Relay Backend", isActive = false),
+                ),
+            ),
+            sessionsState = sessionsState(
+                sessions = listOf(
+                    SessionSummary(
+                        id = "session-1",
+                        projectId = "project-1",
+                        title = "Android shell",
+                        status = SessionStatus.RUNNING,
+                        updatedLabel = "now",
+                        hasUnread = false,
+                    ),
+                    SessionSummary(
+                        id = "session-2",
+                        projectId = "project-2",
+                        title = "Relay session",
+                        status = SessionStatus.IDLE,
+                        updatedLabel = "yesterday",
+                        hasUnread = false,
+                    ),
+                ),
+            ),
+            onProjectSelected = { selectedProjectId = it },
+        )
+
+        composeRule.onNodeWithTag("sessions-project-name")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Yep Anywhere")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Android shell")
+            .assertIsDisplayed()
+        composeRule.onAllNodesWithText("Relay session")
+            .assertCountEquals(0)
+
+        composeRule.onNodeWithText("Relay Backend")
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("project-2", selectedProjectId)
+        }
     }
 
     @Test
@@ -417,6 +492,7 @@ class SupervisorShellScreenTest {
 
     private fun shellState(
         selectedSection: SupervisorShellSection = SupervisorShellSection.ACTIVE,
+        selectedProjectId: String? = null,
         pendingRequests: List<PendingInputRequest> = listOf(questionRequest()),
         timeline: SessionTimeline = timeline(),
         sessions: List<SessionSummary> = sessionsState().sessions,
@@ -433,14 +509,17 @@ class SupervisorShellScreenTest {
                 pendingRequests = pendingRequests,
                 ),
             selectedSection = selectedSection,
+            selectedProjectId = selectedProjectId,
         )
     }
 
-    private fun projectsState(): ProjectsScreenState {
+    private fun projectsState(
+        projects: List<ProjectSummary> = listOf(ProjectSummary(id = "project-1", name = "Yep Anywhere", isActive = true)),
+    ): ProjectsScreenState {
         return ProjectsScreenState(
             title = "Projects",
             subtitle = "Project summary",
-            projects = listOf(ProjectSummary(id = "project-1", name = "Yep Anywhere", isActive = true)),
+            projects = projects,
         )
     }
 
