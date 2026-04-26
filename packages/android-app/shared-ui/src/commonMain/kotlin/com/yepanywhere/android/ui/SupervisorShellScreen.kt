@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +38,7 @@ import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
+import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
@@ -1341,10 +1343,13 @@ private fun MessageCard(message: SessionMessage) {
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium,
             )
-            Text(
-                text = message.body,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            val blocks = message.blocks.ifEmpty { listOf(MessageContentBlock.Text(message.body)) }
+            blocks.forEachIndexed { index, block ->
+                MessageContentBlockView(
+                    blockId = "${message.id}-$index",
+                    block = block,
+                )
+            }
             Text(
                 text = message.timestampLabel,
                 style = MaterialTheme.typography.labelSmall,
@@ -1352,6 +1357,165 @@ private fun MessageCard(message: SessionMessage) {
             )
         }
     }
+}
+
+@Composable
+private fun MessageContentBlockView(
+    blockId: String,
+    block: MessageContentBlock,
+) {
+    when (block) {
+        is MessageContentBlock.Text -> PlainMessageBlock(
+            blockId = blockId,
+            text = block.text,
+        )
+        is MessageContentBlock.Thinking -> LabeledMessageBlock(
+            blockId = blockId,
+            label = "Thinking",
+            text = block.text,
+        )
+        is MessageContentBlock.ToolUse -> LabeledMessageBlock(
+            blockId = blockId,
+            label = "Tool use: ${block.name}",
+            text = block.input,
+        )
+        is MessageContentBlock.ToolResult -> CollapsibleMessageBlock(
+            blockId = blockId,
+            label = if (block.isError) "Tool result error" else "Tool result",
+            text = block.content,
+        )
+        is MessageContentBlock.FileOperation -> CollapsibleMessageBlock(
+            blockId = blockId,
+            label = "${block.operation.replaceFirstChar(Char::titlecase)}: ${block.path}",
+            text = block.content ?: block.path,
+        )
+        is MessageContentBlock.WebReference -> LabeledMessageBlock(
+            blockId = blockId,
+            label = block.operation.replace('_', ' ').replaceFirstChar(Char::titlecase),
+            text = block.title ?: block.queryOrUrl,
+        )
+        is MessageContentBlock.Task -> CollapsibleMessageBlock(
+            blockId = blockId,
+            label = "Task: ${block.title}",
+            text = block.content ?: block.title,
+        )
+        is MessageContentBlock.TodoUpdate -> CollapsibleMessageBlock(
+            blockId = blockId,
+            label = "Todo update",
+            text = block.summary ?: block.items.joinToString("\n"),
+        )
+        is MessageContentBlock.Image -> LabeledMessageBlock(
+            blockId = blockId,
+            label = "Image",
+            text = block.alt ?: block.source,
+        )
+        is MessageContentBlock.Document -> LabeledMessageBlock(
+            blockId = blockId,
+            label = "Document",
+            text = block.name,
+        )
+        is MessageContentBlock.Fallback -> CollapsibleMessageBlock(
+            blockId = blockId,
+            label = block.type.replace('_', ' ').replaceFirstChar(Char::titlecase),
+            text = block.text,
+        )
+    }
+}
+
+@Composable
+private fun PlainMessageBlock(
+    blockId: String,
+    text: String,
+) {
+    if (text.isBlank()) {
+        return
+    }
+    Text(
+        modifier = Modifier.testTag("message-block-$blockId"),
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+    )
+}
+
+@Composable
+private fun LabeledMessageBlock(
+    blockId: String,
+    label: String,
+    text: String,
+) {
+    MessageBlockContainer(blockId = blockId) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        if (text.isNotBlank()) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CollapsibleMessageBlock(
+    blockId: String,
+    label: String,
+    text: String,
+) {
+    val shouldCollapse = text.length > 260 || text.lines().size > 8
+    var expanded by rememberSaveable(blockId) { mutableStateOf(!shouldCollapse) }
+    val displayText = if (expanded || !shouldCollapse) {
+        text
+    } else {
+        text.lines()
+            .take(8)
+            .joinToString("\n")
+            .take(260)
+            .trimEnd() + "\n..."
+    }
+
+    MessageBlockContainer(blockId = blockId) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        if (displayText.isNotBlank()) {
+            Text(
+                text = displayText,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (shouldCollapse) {
+            Button(
+                modifier = Modifier.testTag("message-block-toggle-$blockId"),
+                onClick = { expanded = !expanded },
+            ) {
+                Text(if (expanded) "Collapse output" else "Expand output")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageBlockContainer(
+    blockId: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                shape = MaterialTheme.shapes.small,
+            )
+            .padding(10.dp)
+            .testTag("message-block-$blockId"),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        content = content,
+    )
 }
 
 @Composable

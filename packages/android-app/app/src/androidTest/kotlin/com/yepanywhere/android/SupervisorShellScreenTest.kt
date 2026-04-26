@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
@@ -253,6 +254,44 @@ class SupervisorShellScreenTest {
         scrollShellTo("pending-request-answer-request-question")
         composeRule.onNodeWithTag("pending-request-answer-request-question")
             .assertIsNotEnabled()
+    }
+
+    @Test
+    fun activeSessionRendersTypedBlocksAndExpandsLongToolOutput() {
+        val longOutput = (1..20).joinToString("\n") { index -> "output-line-$index" }
+        val timeline = typedBlockTimeline(longOutput)
+
+        renderShell(
+            activeSessionState = activeSessionState(
+                pendingRequests = emptyList(),
+                timeline = timeline,
+            ),
+            shellState = shellState(
+                pendingRequests = emptyList(),
+                timeline = timeline,
+            ),
+        )
+
+        scrollShellTo("message-block-msg-typed-1")
+        composeRule.onNodeWithText("Preparing patch")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Thinking")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Tool use: Bash")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("npm test")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Tool result")
+            .assertIsDisplayed()
+        composeRule.onAllNodesWithText("output-line-20")
+            .assertCountEquals(0)
+
+        scrollShellTo("message-block-toggle-msg-typed-3")
+        composeRule.onNodeWithTag("message-block-toggle-msg-typed-3")
+            .performClick()
+
+        composeRule.onNodeWithText("output-line-20")
+            .assertIsDisplayed()
     }
 
     @Test
@@ -596,6 +635,34 @@ class SupervisorShellScreenTest {
     private fun disconnectedTimeline(): SessionTimeline {
         return timeline().copy(
             connectionStatus = RelayConnectionStatus.DISCONNECTED,
+        )
+    }
+
+    private fun typedBlockTimeline(longOutput: String): SessionTimeline {
+        return SessionTimeline(
+            sessionId = "session-1",
+            connectionStatus = RelayConnectionStatus.CONNECTED,
+            messages = listOf(
+                SessionMessage(
+                    id = "msg-typed",
+                    author = SessionMessageAuthor.ASSISTANT,
+                    body = "Preparing patch\nchecking project state\nnpm test\n$longOutput",
+                    timestampLabel = "10:15",
+                    blocks = listOf(
+                        MessageContentBlock.Text("Preparing patch"),
+                        MessageContentBlock.Thinking("checking project state"),
+                        MessageContentBlock.ToolUse(
+                            name = "Bash",
+                            input = "npm test",
+                            callId = "tool-1",
+                        ),
+                        MessageContentBlock.ToolResult(
+                            content = longOutput,
+                            toolUseId = "tool-1",
+                        ),
+                    ),
+                ),
+            ),
         )
     }
 

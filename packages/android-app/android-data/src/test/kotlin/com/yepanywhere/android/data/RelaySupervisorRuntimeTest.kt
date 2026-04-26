@@ -2,6 +2,7 @@ package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.GlobalSessionFilters
+import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.NewSessionDefaults
 import com.yepanywhere.android.core.model.NewSessionOptions
 import com.yepanywhere.android.core.model.RelayConnectionStatus
@@ -469,6 +470,22 @@ class RelaySupervisorRuntimeTest {
         assertEquals(true, detail.pagination?.hasOlderMessages)
         assertEquals(42, detail.pagination?.totalMessageCount)
         assertEquals(listOf("msg-1", "msg-2"), detail.timeline.messages.map { it.id })
+        assertEquals(
+            listOf(
+                MessageContentBlock.Text("hello"),
+                MessageContentBlock.Thinking("checking project state"),
+                MessageContentBlock.ToolUse(
+                    name = "Bash",
+                    input = "npm test",
+                    callId = "tool-1",
+                ),
+                MessageContentBlock.ToolResult(
+                    content = "all tests passed",
+                    toolUseId = "tool-1",
+                ),
+            ),
+            detail.timeline.messages.first().blocks,
+        )
         assertTrue(
             gateway.requests.any { request ->
                 request.method == "GET" &&
@@ -842,12 +859,28 @@ class RelaySupervisorRuntimeTest {
                     ),
                     "messages" to JsonArray(
                         listOf(
-                            jsonObject(
-                                "id" to JsonPrimitive("msg-1"),
-                                "type" to JsonPrimitive("assistant"),
-                                "timestamp" to JsonPrimitive("2026-04-26T13:00:00Z"),
-                                "content" to JsonArray(listOf(jsonObject("type" to JsonPrimitive("text"), "text" to JsonPrimitive("hello")))),
+                        jsonObject(
+                            "id" to JsonPrimitive("msg-1"),
+                            "type" to JsonPrimitive("assistant"),
+                            "timestamp" to JsonPrimitive("2026-04-26T13:00:00Z"),
+                            "content" to JsonArray(
+                                listOf(
+                                    jsonObject("type" to JsonPrimitive("text"), "text" to JsonPrimitive("hello")),
+                                    jsonObject("type" to JsonPrimitive("thinking"), "thinking" to JsonPrimitive("checking project state")),
+                                    jsonObject(
+                                        "type" to JsonPrimitive("tool_use"),
+                                        "id" to JsonPrimitive("tool-1"),
+                                        "name" to JsonPrimitive("Bash"),
+                                        "input" to jsonObject("command" to JsonPrimitive("npm test")),
+                                    ),
+                                    jsonObject(
+                                        "type" to JsonPrimitive("tool_result"),
+                                        "tool_use_id" to JsonPrimitive("tool-1"),
+                                        "content" to JsonPrimitive("all tests passed"),
+                                    ),
+                                ),
                             ),
+                        ),
                             jsonObject(
                                 "id" to JsonPrimitive("msg-2"),
                                 "type" to JsonPrimitive("user"),

@@ -6,6 +6,7 @@ import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.NewSessionDefaults
 import com.yepanywhere.android.core.model.NewSessionOptions
 import com.yepanywhere.android.core.model.NewSessionSettings
@@ -1340,15 +1341,153 @@ private fun JsonObject?.toSessionMessage(index: Int): SessionMessage {
         "assistant" -> SessionMessageAuthor.ASSISTANT
         else -> SessionMessageAuthor.SYSTEM
     }
+    val blocks = message.extractMessageBlocks()
+    val body = blocks.joinToString("\n") { it.text }.ifBlank {
+        message.extractMessageBody()
+    }
     return SessionMessage(
         id = message["id"].asString() ?: message["uuid"].asString() ?: "msg-$index",
         author = author,
-        body = message.extractMessageBody(),
+        body = body,
         timestampLabel = message["timestamp"].asString()
             ?: message["createdAt"].asString()
             ?: message["updatedAt"].asString()
             ?: "now",
+        blocks = blocks.ifEmpty { listOf(MessageContentBlock.Text(body)) },
     )
+}
+
+private fun JsonObject.extractMessageBlocks(): List<MessageContentBlock> {
+    val content = this["content"]
+    if (content is JsonPrimitive) {
+        return content.contentOrNull
+            ?.takeIf { it.isNotBlank() }
+            ?.let { listOf(MessageContentBlock.Text(it)) }
+            ?: emptyList()
+    }
+    if (content is JsonArray) {
+        return content.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> item.contentOrNull
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(MessageContentBlock::Text)
+
+                is JsonObject -> item.toMessageContentBlock()
+                else -> null
+            }
+        }
+    }
+    return listOfNotNull(
+        this["text"].asString()
+            ?: this["message"].asString()
+            ?: this["prompt"].asString(),
+    ).filter { it.isNotBlank() }.map(MessageContentBlock::Text)
+}
+
+private fun JsonObject.toMessageContentBlock(): MessageContentBlock? {
+    val type = this["type"].asString()?.lowercase()
+    val text = this["text"].asString()
+        ?: this["thinking"].asString()
+        ?: this["message"].asString()
+        ?: this["prompt"].asString()
+        ?: this["content"].toBlockText()
+    return when (type) {
+        "text" -> text.toTextBlock()
+        "thinking" -> text.toThinkingBlock()
+        "tool_use", "tool-use", "tooluse" -> MessageContentBlock.ToolUse(
+            name = this["name"].asString()
+                ?: this["toolName"].asString()
+                ?: "Tool",
+            input = this["input"].toBlockText() ?: text.orEmpty(),
+            callId = this["id"].asString() ?: this["callId"].asString(),
+        )
+        "tool_result", "tool-result", "toolresult" -> MessageContentBlock.ToolResult(
+            content = text.orEmpty(),
+            toolUseId = this["tool_use_id"].asString()
+                ?: this["toolUseId"].asString()
+                ?: this["id"].asString(),
+            isError = this["is_error"].asBoolean() ?: this["isError"].asBoolean() ?: false,
+        )
+        "bash", "bash_output", "bash-output" -> MessageContentBlock.ToolResult(
+            content = this["output"].asString() ?: text.orEmpty(),
+            toolUseId = this["tool_use_id"].asString() ?: this["toolUseId"].asString(),
+            isError = this["is_error"].asBoolean() ?: this["isError"].asBoolean() ?: false,
+        )
+        "edit", "read", "write", "file" -> MessageContentBlock.FileOperation(
+            operation = type,
+            path = this["path"].asString()
+                ?: this["filePath"].asString()
+                ?: this["name"].asString()
+                ?: "file",
+            content = text,
+        )
+        "web_search", "web-search", "web_fetch", "web-fetch" -> MessageContentBlock.WebReference(
+            operation = type,
+            queryOrUrl = this["query"].asString()
+                ?: this["url"].asString()
+                ?: text.orEmpty(),
+            title = this["title"].asString(),
+        )
+        "task", "subagent" -> MessageContentBlock.Task(
+            title = this["name"].asString()
+                ?: this["title"].asString()
+                ?: "Task",
+            content = text,
+        )
+        "todo", "todo_update", "todo-update", "update_plan", "update-plan" -> MessageContentBlock.TodoUpdate(
+            items = this["items"].asJsonArray().mapNotNull { item -> item.toBlockText() },
+            summary = this["summary"].asString() ?: text,
+        )
+        "image" -> MessageContentBlock.Image(
+            source = this["source"].asString()
+                ?: this["url"].asString()
+                ?: this["file"].asString()
+                ?: text.orEmpty(),
+            alt = this["alt"].asString(),
+        )
+        "document" -> MessageContentBlock.Document(
+            name = this["name"].asString()
+                ?: this["title"].asString()
+                ?: this["url"].asString()
+                ?: "Document",
+            mimeType = this["mimeType"].asString(),
+            url = this["url"].asString(),
+        )
+        null -> text.toTextBlock()
+        else -> MessageContentBlock.Fallback(
+            type = type,
+            text = text ?: this.toString(),
+        )
+    }
+}
+
+private fun String?.toTextBlock(): MessageContentBlock.Text? {
+    return this?.takeIf { it.isNotBlank() }?.let(MessageContentBlock::Text)
+}
+
+private fun String?.toThinkingBlock(): MessageContentBlock.Thinking? {
+    return this?.takeIf { it.isNotBlank() }?.let(MessageContentBlock::Thinking)
+}
+
+private fun JsonElement?.toBlockText(): String? {
+    return when (this) {
+        is JsonPrimitive -> contentOrNull
+        is JsonArray -> mapNotNull { it.toBlockText() }
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+            .takeIf { it.isNotBlank() }
+        is JsonObject -> {
+            this["command"].asString()
+                ?: this["text"].asString()
+                ?: this["content"].toBlockText()
+                ?: this["message"].asString()
+                ?: this["prompt"].asString()
+                ?: entries.mapNotNull { (key, value) ->
+                    value.toBlockText()?.takeIf { it.isNotBlank() }?.let { "$key: $it" }
+                }.joinToString("\n").takeIf { it.isNotBlank() }
+        }
+        else -> null
+    }
 }
 
 private fun JsonObject.extractMessageBody(): String {

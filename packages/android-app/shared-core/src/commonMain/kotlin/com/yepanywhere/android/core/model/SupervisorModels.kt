@@ -122,11 +122,98 @@ data class NewSessionStartResult(
     val modeVersion: Int = 0,
 )
 
+sealed interface MessageContentBlock {
+    val text: String
+
+    data class Text(
+        override val text: String,
+    ) : MessageContentBlock
+
+    data class Thinking(
+        override val text: String,
+    ) : MessageContentBlock
+
+    data class ToolUse(
+        val name: String,
+        val input: String,
+        val callId: String? = null,
+    ) : MessageContentBlock {
+        override val text: String
+            get() = input
+    }
+
+    data class ToolResult(
+        val content: String,
+        val toolUseId: String? = null,
+        val isError: Boolean = false,
+    ) : MessageContentBlock {
+        override val text: String
+            get() = content
+    }
+
+    data class FileOperation(
+        val operation: String,
+        val path: String,
+        val content: String? = null,
+    ) : MessageContentBlock {
+        override val text: String
+            get() = content ?: path
+    }
+
+    data class WebReference(
+        val operation: String,
+        val queryOrUrl: String,
+        val title: String? = null,
+    ) : MessageContentBlock {
+        override val text: String
+            get() = title ?: queryOrUrl
+    }
+
+    data class Task(
+        val title: String,
+        val content: String? = null,
+    ) : MessageContentBlock {
+        override val text: String
+            get() = content ?: title
+    }
+
+    data class TodoUpdate(
+        val items: List<String>,
+        val summary: String? = null,
+    ) : MessageContentBlock {
+        override val text: String
+            get() = summary ?: items.joinToString("\n")
+    }
+
+    data class Image(
+        val source: String,
+        val alt: String? = null,
+    ) : MessageContentBlock {
+        override val text: String
+            get() = alt ?: source
+    }
+
+    data class Document(
+        val name: String,
+        val mimeType: String? = null,
+        val url: String? = null,
+    ) : MessageContentBlock {
+        override val text: String
+            get() = name
+    }
+
+    data class Fallback(
+        val type: String,
+        override val text: String,
+    ) : MessageContentBlock
+}
+
 data class SessionMessage(
     val id: String,
     val author: SessionMessageAuthor,
     val body: String,
     val timestampLabel: String,
+    val blocks: List<MessageContentBlock> = listOf(MessageContentBlock.Text(body)),
 )
 
 data class SessionTimeline(
