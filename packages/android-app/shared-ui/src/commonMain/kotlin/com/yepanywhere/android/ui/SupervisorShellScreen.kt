@@ -1,6 +1,8 @@
 package com.yepanywhere.android.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +35,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.GlobalSessionFilters
+import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
@@ -84,6 +88,11 @@ data class SessionsScreenState(
     val title: String,
     val subtitle: String,
     val sessions: List<SessionSummary>,
+    val filters: GlobalSessionFilters = GlobalSessionFilters(),
+    val stats: GlobalSessionStats = GlobalSessionStats(),
+    val hasMore: Boolean = false,
+    val isLoading: Boolean = false,
+    val selectedSessionIds: Set<String> = emptySet(),
 )
 
 data class InboxScreenState(
@@ -117,6 +126,13 @@ fun SupervisorShellScreen(
     onSectionSelected: (SupervisorShellSection) -> Unit,
     onProjectSelected: (String) -> Unit,
     onSessionSelected: (projectId: String, sessionId: String) -> Unit = { _, _ -> },
+    onSessionFiltersApplied: (GlobalSessionFilters) -> Unit = {},
+    onLoadMoreSessions: () -> Unit = {},
+    onSessionSelectionToggled: (String) -> Unit = {},
+    onBulkArchiveSessions: () -> Unit = {},
+    onBulkStarSessions: () -> Unit = {},
+    onBulkMarkSessionsRead: () -> Unit = {},
+    onBulkMarkSessionsUnread: () -> Unit = {},
     onLogout: () -> Unit,
 ) {
     AndroidAppTheme {
@@ -179,6 +195,13 @@ fun SupervisorShellScreen(
                         projects = projectsState.projects,
                         onProjectSelected = onProjectSelected,
                         onSessionSelected = onSessionSelected,
+                        onSessionFiltersApplied = onSessionFiltersApplied,
+                        onLoadMoreSessions = onLoadMoreSessions,
+                        onSessionSelectionToggled = onSessionSelectionToggled,
+                        onBulkArchiveSessions = onBulkArchiveSessions,
+                        onBulkStarSessions = onBulkStarSessions,
+                        onBulkMarkSessionsRead = onBulkMarkSessionsRead,
+                        onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
                     )
                     SupervisorShellSection.AGENTS -> PlaceholderSection(
                         title = "Agents",
@@ -356,6 +379,13 @@ private fun SessionsSection(
     projects: List<ProjectSummary>,
     onProjectSelected: (String) -> Unit,
     onSessionSelected: (projectId: String, sessionId: String) -> Unit,
+    onSessionFiltersApplied: (GlobalSessionFilters) -> Unit,
+    onLoadMoreSessions: () -> Unit,
+    onSessionSelectionToggled: (String) -> Unit,
+    onBulkArchiveSessions: () -> Unit,
+    onBulkStarSessions: () -> Unit,
+    onBulkMarkSessionsRead: () -> Unit,
+    onBulkMarkSessionsUnread: () -> Unit,
 ) {
     val emptyState = listSectionEmptyState(
         connectionStatus = connectionStatus,
@@ -370,8 +400,26 @@ private fun SessionsSection(
         SessionsProjectSelector(
             projects = projects,
             selectedProjectId = selectedProjectId,
-            onProjectSelected = onProjectSelected,
+            onProjectSelected = { projectId ->
+                onProjectSelected(projectId)
+                onSessionFiltersApplied(state.filters.copy(project = projectId))
+            },
         )
+        SessionsFilterPanel(
+            filters = state.filters,
+            stats = state.stats,
+            isLoading = state.isLoading,
+            onApply = onSessionFiltersApplied,
+        )
+        if (state.selectedSessionIds.isNotEmpty()) {
+            SessionsBulkActions(
+                selectedCount = state.selectedSessionIds.size,
+                onArchive = onBulkArchiveSessions,
+                onStar = onBulkStarSessions,
+                onMarkRead = onBulkMarkSessionsRead,
+                onMarkUnread = onBulkMarkSessionsUnread,
+            )
+        }
         SectionList(
             title = state.title,
             subtitle = state.subtitle,
@@ -380,11 +428,51 @@ private fun SessionsSection(
         ) { session ->
             ListCard(
                 title = session.title,
-                subtitle = "${session.status.name.lowercase().replaceFirstChar(Char::titlecase)} • ${session.updatedLabel}",
-                trailing = if (session.hasUnread) "Unread" else null,
-                onClick = { onSessionSelected(session.projectId, session.id) },
+                subtitle = session.sessionSubtitle(),
+                trailing = session.sessionTrailing(state.selectedSessionIds),
+                onClick = {
+                    if (state.selectedSessionIds.isEmpty()) {
+                        onSessionSelected(session.projectId, session.id)
+                    } else {
+                        onSessionSelectionToggled(session.id)
+                    }
+                },
+                onLongClick = { onSessionSelectionToggled(session.id) },
             )
         }
+        if (state.hasMore) {
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("sessions-load-more"),
+                enabled = !state.isLoading,
+                onClick = onLoadMoreSessions,
+            ) {
+                Text(if (state.isLoading) "Loading..." else "Load more")
+            }
+        }
+    }
+}
+
+private fun SessionSummary.sessionSubtitle(): String {
+    val parts = buildList {
+        add(status.name.lowercase().replaceFirstChar(Char::titlecase))
+        provider?.let(::add)
+        executor?.let(::add)
+        model?.let(::add)
+        add(updatedLabel)
+    }
+    return parts.joinToString(" • ")
+}
+
+private fun SessionSummary.sessionTrailing(selectedSessionIds: Set<String>): String? {
+    return when {
+        id in selectedSessionIds -> "Selected"
+        isStarred && hasUnread -> "Starred unread"
+        isStarred -> "Starred"
+        hasUnread -> "Unread"
+        isArchived -> "Archived"
+        else -> null
     }
 }
 
@@ -402,6 +490,164 @@ private fun PlaceholderSection(
             body = subtitle,
         ),
     ) {}
+}
+
+@Composable
+private fun SessionsFilterPanel(
+    filters: GlobalSessionFilters,
+    stats: GlobalSessionStats,
+    isLoading: Boolean,
+    onApply: (GlobalSessionFilters) -> Unit,
+) {
+    var query by rememberSaveable(filters.query) { mutableStateOf(filters.query.orEmpty()) }
+    var status by rememberSaveable(filters.status) { mutableStateOf(filters.status.orEmpty()) }
+    var provider by rememberSaveable(filters.provider) { mutableStateOf(filters.provider.orEmpty()) }
+    var executor by rememberSaveable(filters.executor) { mutableStateOf(filters.executor.orEmpty()) }
+    var age by rememberSaveable(filters.age) { mutableStateOf(filters.age.orEmpty()) }
+    var includeArchived by rememberSaveable(filters.includeArchived) { mutableStateOf(filters.includeArchived) }
+    var starred by rememberSaveable(filters.starred) { mutableStateOf(filters.starred) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("sessions-filter-panel"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Filters",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Search") },
+                singleLine = true,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = status,
+                    onValueChange = { status = it },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Status") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = provider,
+                    onValueChange = { provider = it },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Provider") },
+                    singleLine = true,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = executor,
+                    onValueChange = { executor = it },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Executor") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = age,
+                    onValueChange = { age = it },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Age") },
+                    singleLine = true,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(onClick = { includeArchived = !includeArchived }) {
+                    Text(if (includeArchived) "Archived on" else "Archived off")
+                }
+                Button(onClick = { starred = !starred }) {
+                    Text(if (starred) "Starred on" else "Starred off")
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Total ${stats.total} • Unread ${stats.unread} • Starred ${stats.starred}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    modifier = Modifier.testTag("sessions-filter-apply"),
+                    enabled = !isLoading,
+                    onClick = {
+                        onApply(
+                            filters.copy(
+                                query = query.blankToNull(),
+                                status = status.blankToNull(),
+                                provider = provider.blankToNull(),
+                                executor = executor.blankToNull(),
+                                age = age.blankToNull(),
+                                includeArchived = includeArchived,
+                                starred = starred,
+                            ),
+                        )
+                    },
+                ) {
+                    Text(if (isLoading) "Loading" else "Apply")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SessionsBulkActions(
+    selectedCount: Int,
+    onArchive: () -> Unit,
+    onStar: () -> Unit,
+    onMarkRead: () -> Unit,
+    onMarkUnread: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("sessions-bulk-actions"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "$selectedCount selected",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(modifier = Modifier.weight(1f), onClick = onArchive) { Text("Archive") }
+                Button(modifier = Modifier.weight(1f), onClick = onStar) { Text("Star") }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(modifier = Modifier.weight(1f), onClick = onMarkRead) { Text("Read") }
+                Button(modifier = Modifier.weight(1f), onClick = onMarkUnread) { Text("Unread") }
+            }
+        }
+    }
 }
 
 @Composable
@@ -899,11 +1145,13 @@ private fun SectionTitle(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun ListCard(
     title: String,
     subtitle: String,
     trailing: String? = null,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val content: @Composable () -> Unit = {
         Row(
@@ -949,13 +1197,25 @@ private fun ListCard(
             }
         }
     }
-    if (onClick == null) {
+    if (onClick == null && onLongClick == null) {
         Card(modifier = Modifier.fillMaxWidth()) {
+            content()
+        }
+    } else if (onLongClick != null) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = { onClick?.invoke() },
+                    onLongClick = onLongClick,
+                ),
+            colors = CardDefaults.cardColors(),
+        ) {
             content()
         }
     } else {
         Card(
-            onClick = onClick,
+            onClick = onClick ?: {},
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(),
         ) {
@@ -963,3 +1223,5 @@ private fun ListCard(
         }
     }
 }
+
+private fun String.blankToNull(): String? = trim().takeIf { it.isNotEmpty() }

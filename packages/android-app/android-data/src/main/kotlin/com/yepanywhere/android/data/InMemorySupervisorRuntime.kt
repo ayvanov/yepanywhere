@@ -2,12 +2,16 @@ package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.GlobalSessionFilters
+import com.yepanywhere.android.core.model.GlobalSessionStats
+import com.yepanywhere.android.core.model.GlobalSessionsPage
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
+import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
@@ -201,6 +205,48 @@ class InMemorySupervisorRuntime(
             connectionState.value = RelayConnectionStatus.CONNECTED
         }
 
+        override suspend fun loadGlobalSessions(
+            filters: GlobalSessionFilters,
+            after: String?,
+            limit: Int,
+        ): GlobalSessionsPage {
+            val project = filters.project
+            val query = filters.query
+            val status = filters.status
+            val provider = filters.provider
+            val executor = filters.executor
+            val filtered = cache.observeSessions().first()
+                .filter { session -> project == null || session.projectId == project }
+                .filter { session -> query == null || session.title.contains(query, ignoreCase = true) }
+                .filter { session -> status == null || session.status.name.equals(status, ignoreCase = true) }
+                .filter { session -> provider == null || session.provider?.equals(provider, ignoreCase = true) == true }
+                .filter { session -> executor == null || session.executor?.equals(executor, ignoreCase = true) == true }
+                .filter { session -> filters.includeArchived || !session.isArchived }
+                .filter { session -> !filters.starred || session.isStarred }
+            val startIndex = after?.let { cursor ->
+                filtered.indexOfFirst { it.id == cursor }.takeIf { it >= 0 }?.plus(1)
+            } ?: 0
+            val page = filtered.drop(startIndex).take(limit)
+            cache.storeSessions(
+                if (after == null) {
+                    page
+                } else {
+                    (cache.observeSessions().first() + page).distinctBy { it.id }
+                },
+            )
+            return GlobalSessionsPage(
+                sessions = page,
+                hasMore = startIndex + page.size < filtered.size,
+                nextAfter = page.lastOrNull()?.id,
+                stats = GlobalSessionStats(
+                    total = filtered.size,
+                    unread = filtered.count { it.hasUnread },
+                    starred = filtered.count { it.isStarred },
+                    archived = filtered.count { it.isArchived },
+                ),
+            )
+        }
+
         override fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline> {
             return cache.observeTimeline(sessionId).map { timeline ->
                 timeline ?: initialTimeline.copy(sessionId = sessionId, messages = emptyList())
@@ -238,6 +284,48 @@ class InMemorySupervisorRuntime(
                 }
             }
             cache.storeSessions(sessions)
+        }
+
+        override suspend fun updateSessionMetadata(
+            sessionId: String,
+            updates: SessionMetadataUpdate,
+        ): Boolean {
+            cache.storeSessions(
+                cache.observeSessions().first().map { session ->
+                    if (session.id != sessionId) {
+                        session
+                    } else {
+                        session.copy(
+                            title = updates.title ?: session.title,
+                            isArchived = updates.archived ?: session.isArchived,
+                            isStarred = updates.starred ?: session.isStarred,
+                        )
+                    }
+                },
+            )
+            return true
+        }
+
+        override suspend fun markSessionSeen(
+            sessionId: String,
+            timestamp: String?,
+            messageId: String?,
+        ): Boolean {
+            cache.storeSessions(
+                cache.observeSessions().first().map { session ->
+                    if (session.id == sessionId) session.copy(hasUnread = false) else session
+                },
+            )
+            return true
+        }
+
+        override suspend fun markSessionUnread(sessionId: String): Boolean {
+            cache.storeSessions(
+                cache.observeSessions().first().map { session ->
+                    if (session.id == sessionId) session.copy(hasUnread = true) else session
+                },
+            )
+            return true
         }
     }
 

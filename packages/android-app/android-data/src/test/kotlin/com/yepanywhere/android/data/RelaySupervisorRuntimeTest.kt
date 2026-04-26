@@ -1,8 +1,10 @@
 package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
+import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.StoredRelaySession
 import com.yepanywhere.android.core.usecase.SecureRelayAuthHandshakeResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -18,6 +20,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -206,6 +209,112 @@ class RelaySupervisorRuntimeTest {
 
         assertEquals("Yep Anywhere", project.name)
         assertEquals("/repo/yepanywhere", project.path)
+    }
+
+    @Test
+    fun loadGlobalSessionsUsesFiltersPaginationAndMapsMetadata() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        val page = runtime.sessionsRepository.loadGlobalSessions(
+            filters = GlobalSessionFilters(
+                project = "project-1",
+                query = "android",
+                status = "running",
+                provider = "claude",
+                executor = "local",
+                age = "24h",
+                includeArchived = true,
+                starred = true,
+            ),
+            after = "cursor-1",
+            limit = 2,
+        )
+
+        assertEquals(1, page.sessions.size)
+        val session = page.sessions.first()
+        assertEquals("global-1", session.id)
+        assertEquals("project-1", session.projectId)
+        assertEquals("Claude supervisor", session.title)
+        assertEquals("claude", session.provider)
+        assertEquals("local", session.executor)
+        assertTrue(session.isStarred)
+        assertFalse(session.isArchived)
+        assertTrue(page.hasMore)
+        assertEquals("cursor-2", page.nextAfter)
+        assertEquals(12, page.stats.total)
+        assertTrue(
+            gateway.requests.any { request ->
+                request.method == "GET" &&
+                    request.path.startsWith("/sessions?") &&
+                    request.path.contains("project=project-1") &&
+                    request.path.contains("q=android") &&
+                    request.path.contains("status=running") &&
+                    request.path.contains("provider=claude") &&
+                    request.path.contains("executor=local") &&
+                    request.path.contains("age=24h") &&
+                    request.path.contains("after=cursor-1") &&
+                    request.path.contains("limit=2") &&
+                    request.path.contains("includeArchived=true") &&
+                    request.path.contains("starred=true")
+            },
+        )
+    }
+
+    @Test
+    fun sessionMetadataAndReadStateActionsHitBackendAndUpdateCache() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+        runtime.sessionsRepository.loadGlobalSessions()
+
+        runtime.sessionsRepository.updateSessionMetadata(
+            sessionId = "global-1",
+            updates = SessionMetadataUpdate(
+                archived = true,
+                starred = true,
+            ),
+        )
+        runtime.sessionsRepository.markSessionSeen(
+            sessionId = "global-1",
+            timestamp = "2026-04-26T12:00:00Z",
+            messageId = "msg-1",
+        )
+        runtime.sessionsRepository.markSessionUnread(sessionId = "global-1")
+
+        assertEquals(
+            jsonObject(
+                "archived" to JsonPrimitive(true),
+                "starred" to JsonPrimitive(true),
+            ),
+            gateway.recordedRequest("PUT", "/sessions/global-1/metadata").body,
+        )
+        assertEquals(
+            jsonObject(
+                "timestamp" to JsonPrimitive("2026-04-26T12:00:00Z"),
+                "messageId" to JsonPrimitive("msg-1"),
+            ),
+            gateway.recordedRequest("POST", "/sessions/global-1/mark-seen").body,
+        )
+        assertTrue(gateway.requests.any { it.method == "DELETE" && it.path == "/sessions/global-1/mark-seen" })
+        assertTrue(runtime.sessionsRepository.observeSessions().first().first { it.id == "global-1" }.hasUnread)
     }
 
     @Test
@@ -472,6 +581,21 @@ class RelaySupervisorRuntimeTest {
                     ),
                 )
             }
+            if (method == "GET" && path.startsWith("/sessions?")) {
+                return globalSessionsResponse()
+            }
+            if (method == "GET" && path == "/sessions?limit=50&includeStats=true") {
+                return globalSessionsResponse()
+            }
+            if (method == "PUT" && path == "/sessions/global-1/metadata") {
+                return jsonObject("accepted" to JsonPrimitive(true))
+            }
+            if (method == "POST" && path == "/sessions/global-1/mark-seen") {
+                return jsonObject("accepted" to JsonPrimitive(true))
+            }
+            if (method == "DELETE" && path == "/sessions/global-1/mark-seen") {
+                return jsonObject("accepted" to JsonPrimitive(true))
+            }
             return when (path) {
                 "/projects" -> jsonObject(
                     "projects" to JsonArray(
@@ -596,11 +720,42 @@ class RelaySupervisorRuntimeTest {
 
         override suspend fun unsubscribe(subscriptionId: String) = Unit
 
-        fun recordedRequest(method: String, path: String): RecordedRequest {
+                fun recordedRequest(method: String, path: String): RecordedRequest {
             return assertNotNull(
                 requests.lastOrNull { request ->
                     request.method == method && request.path == path
                 },
+            )
+        }
+
+        private fun globalSessionsResponse(): JsonObject {
+            return jsonObject(
+                "sessions" to JsonArray(
+                    listOf(
+                        jsonObject(
+                            "id" to JsonPrimitive("global-1"),
+                            "projectId" to JsonPrimitive("project-1"),
+                            "title" to JsonPrimitive("Claude supervisor"),
+                            "updatedAt" to JsonPrimitive("2026-04-26T12:00:00Z"),
+                            "status" to JsonPrimitive("running"),
+                            "provider" to JsonPrimitive("claude"),
+                            "model" to JsonPrimitive("opus"),
+                            "executor" to JsonPrimitive("local"),
+                            "activity" to JsonPrimitive("in-turn"),
+                            "hasUnread" to JsonPrimitive(true),
+                            "isStarred" to JsonPrimitive(true),
+                            "isArchived" to JsonPrimitive(false),
+                        ),
+                    ),
+                ),
+                "hasMore" to JsonPrimitive(true),
+                "nextAfter" to JsonPrimitive("cursor-2"),
+                "stats" to jsonObject(
+                    "total" to JsonPrimitive(12),
+                    "unread" to JsonPrimitive(3),
+                    "starred" to JsonPrimitive(2),
+                    "archived" to JsonPrimitive(1),
+                ),
             )
         }
     }

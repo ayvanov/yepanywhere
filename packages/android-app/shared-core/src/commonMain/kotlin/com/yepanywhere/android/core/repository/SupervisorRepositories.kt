@@ -2,9 +2,12 @@ package com.yepanywhere.android.core.repository
 
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
+import com.yepanywhere.android.core.model.GlobalSessionFilters
+import com.yepanywhere.android.core.model.GlobalSessionsPage
 import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.InboxItem
+import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
 import com.yepanywhere.android.core.model.StoredRelaySession
@@ -73,12 +76,63 @@ interface SessionsRepository {
 
     suspend fun refreshSessions(projectId: String? = null)
 
+    suspend fun loadGlobalSessions(
+        filters: GlobalSessionFilters = GlobalSessionFilters(),
+        after: String? = null,
+        limit: Int = 50,
+    ): GlobalSessionsPage {
+        throw NotImplementedError("Global sessions are not implemented by this repository")
+    }
+
     fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline>
 
     suspend fun sendReply(
         sessionId: String,
         text: String,
     )
+
+    suspend fun updateSessionMetadata(
+        sessionId: String,
+        updates: SessionMetadataUpdate,
+    ): Boolean {
+        throw NotImplementedError("Session metadata updates are not implemented by this repository")
+    }
+
+    suspend fun markSessionSeen(
+        sessionId: String,
+        timestamp: String? = null,
+        messageId: String? = null,
+    ): Boolean {
+        throw NotImplementedError("Session read-state updates are not implemented by this repository")
+    }
+
+    suspend fun markSessionUnread(sessionId: String): Boolean {
+        throw NotImplementedError("Session unread-state updates are not implemented by this repository")
+    }
+
+    suspend fun bulkArchive(sessionIds: Set<String>, archived: Boolean) {
+        sessionIds.forEach { sessionId ->
+            updateSessionMetadata(sessionId, SessionMetadataUpdate(archived = archived))
+        }
+    }
+
+    suspend fun bulkStar(sessionIds: Set<String>, starred: Boolean) {
+        sessionIds.forEach { sessionId ->
+            updateSessionMetadata(sessionId, SessionMetadataUpdate(starred = starred))
+        }
+    }
+
+    suspend fun bulkMarkSeen(sessionIds: Set<String>) {
+        sessionIds.forEach { sessionId ->
+            markSessionSeen(sessionId)
+        }
+    }
+
+    suspend fun bulkMarkUnread(sessionIds: Set<String>) {
+        sessionIds.forEach { sessionId ->
+            markSessionUnread(sessionId)
+        }
+    }
 }
 
 interface ApprovalsRepository {

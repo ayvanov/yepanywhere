@@ -53,6 +53,45 @@ data class SessionSummary(
     val status: SessionStatus,
     val updatedLabel: String,
     val hasUnread: Boolean,
+    val provider: String? = null,
+    val model: String? = null,
+    val ownership: String? = null,
+    val activity: String? = null,
+    val isArchived: Boolean = false,
+    val isStarred: Boolean = false,
+    val executor: String? = null,
+)
+
+data class GlobalSessionFilters(
+    val project: String? = null,
+    val query: String? = null,
+    val status: String? = null,
+    val provider: String? = null,
+    val executor: String? = null,
+    val age: String? = null,
+    val includeArchived: Boolean = false,
+    val starred: Boolean = false,
+    val includeStats: Boolean = true,
+)
+
+data class GlobalSessionStats(
+    val total: Int = 0,
+    val unread: Int = 0,
+    val starred: Int = 0,
+    val archived: Int = 0,
+)
+
+data class GlobalSessionsPage(
+    val sessions: List<SessionSummary>,
+    val hasMore: Boolean,
+    val nextAfter: String? = sessions.lastOrNull()?.id,
+    val stats: GlobalSessionStats = GlobalSessionStats(total = sessions.size),
+)
+
+data class SessionMetadataUpdate(
+    val title: String? = null,
+    val archived: Boolean? = null,
+    val starred: Boolean? = null,
 )
 
 data class SessionMessage(

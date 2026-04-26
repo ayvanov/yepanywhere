@@ -10,7 +10,6 @@ import com.yepanywhere.android.core.usecase.DenyRequestUseCase
 import com.yepanywhere.android.core.usecase.ObserveActiveSessionUseCase
 import com.yepanywhere.android.core.usecase.ObserveInboxUseCase
 import com.yepanywhere.android.core.usecase.ObserveProjectsUseCase
-import com.yepanywhere.android.core.usecase.ObserveSessionsUseCase
 import com.yepanywhere.android.core.usecase.SendSessionReplyUseCase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -60,7 +59,6 @@ class AndroidAppContainer(
         handleEvent = supervisorPushEventHandler::handle,
     )
     private val observeProjectsUseCase = ObserveProjectsUseCase(androidDataLayer.projectsRepository)
-    private val observeSessionsUseCase = ObserveSessionsUseCase(androidDataLayer.sessionsRepository)
     private val observeInboxUseCase = ObserveInboxUseCase(androidDataLayer.inboxRepository)
     private val sendSessionReplyUseCase = SendSessionReplyUseCase(androidDataLayer.sessionsRepository)
     private val approveRequestUseCase = ApproveRequestUseCase(androidDataLayer.approvalsRepository)
@@ -84,7 +82,7 @@ class AndroidAppContainer(
     }
 
     fun createSessionsScreenViewModelFactory(): ViewModelProvider.Factory {
-        return SessionsScreenViewModel.factory(observeSessionsUseCase)
+        return SessionsScreenViewModel.factory(androidDataLayer.sessionsRepository)
     }
 
     fun createInboxScreenViewModelFactory(): ViewModelProvider.Factory {

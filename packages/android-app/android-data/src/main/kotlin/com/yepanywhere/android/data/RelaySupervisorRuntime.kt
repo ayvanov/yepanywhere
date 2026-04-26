@@ -1,6 +1,9 @@
 package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.cache.SessionCacheStore
+import com.yepanywhere.android.core.model.GlobalSessionFilters
+import com.yepanywhere.android.core.model.GlobalSessionStats
+import com.yepanywhere.android.core.model.GlobalSessionsPage
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
 import com.yepanywhere.android.core.model.PendingInputRequest
@@ -9,6 +12,7 @@ import com.yepanywhere.android.core.model.RelayConnectionStatus
 import com.yepanywhere.android.core.model.RelaySession
 import com.yepanywhere.android.core.model.SessionMessage
 import com.yepanywhere.android.core.model.SessionMessageAuthor
+import com.yepanywhere.android.core.model.SessionMetadataUpdate
 import com.yepanywhere.android.core.model.SessionStatus
 import com.yepanywhere.android.core.model.SessionSummary
 import com.yepanywhere.android.core.model.SessionTimeline
@@ -61,6 +65,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 
 class RelaySupervisorRuntime(
@@ -268,6 +274,38 @@ class RelaySupervisorRuntime(
             }
         }
 
+        override suspend fun loadGlobalSessions(
+            filters: GlobalSessionFilters,
+            after: String?,
+            limit: Int,
+        ): GlobalSessionsPage {
+            val payload = requestObject(
+                method = "GET",
+                path = buildGlobalSessionsPath(
+                    filters = filters,
+                    after = after,
+                    limit = limit,
+                ),
+            )
+            val sessions = payload["sessions"].asJsonArray().mapNotNull { element ->
+                (element as? JsonObject)?.toSessionSummary(fallbackProjectId = filters.project)
+            }
+            cache.storeSessions(
+                if (after == null) {
+                    sessions
+                } else {
+                    (cache.observeSessions().first() + sessions).distinctBy { it.id }
+                },
+            )
+            return GlobalSessionsPage(
+                sessions = sessions,
+                hasMore = payload["hasMore"].asBoolean() ?: false,
+                nextAfter = payload["nextAfter"].asString() ?: sessions.lastOrNull()?.id,
+                stats = payload["stats"].asObject()?.toGlobalSessionStats()
+                    ?: GlobalSessionStats(total = sessions.size),
+            )
+        }
+
         override fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline> {
             val backendSessionId = toBackendSessionId(sessionId)
             scope.launch {
@@ -300,6 +338,78 @@ class RelaySupervisorRuntime(
             refreshSessionTimeline(backendSessionId)
             refreshSessionsInternal(projectId = null)
             refreshInboxInternal()
+        }
+
+        override suspend fun updateSessionMetadata(
+            sessionId: String,
+            updates: SessionMetadataUpdate,
+        ): Boolean {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestJson(
+                method = "PUT",
+                path = "/sessions/$backendSessionId/metadata",
+                body = buildJsonObject {
+                    updates.title?.let { put("title", it) }
+                    updates.archived?.let { put("archived", it) }
+                    updates.starred?.let { put("starred", it) }
+                },
+            )
+            cache.storeSessions(
+                cache.observeSessions().first().map { session ->
+                    if (session.id != sessionId) {
+                        session
+                    } else {
+                        session.copy(
+                            title = updates.title ?: session.title,
+                            isArchived = updates.archived ?: session.isArchived,
+                            isStarred = updates.starred ?: session.isStarred,
+                        )
+                    }
+                },
+            )
+            return payload.asObject()?.get("accepted").asBoolean()
+                ?: payload.asObject()?.get("ok").asBoolean()
+                ?: true
+        }
+
+        override suspend fun markSessionSeen(
+            sessionId: String,
+            timestamp: String?,
+            messageId: String?,
+        ): Boolean {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestJson(
+                method = "POST",
+                path = "/sessions/$backendSessionId/mark-seen",
+                body = buildJsonObject {
+                    timestamp?.let { put("timestamp", it) }
+                    messageId?.let { put("messageId", it) }
+                },
+            )
+            cache.storeSessions(
+                cache.observeSessions().first().map { session ->
+                    if (session.id == sessionId) session.copy(hasUnread = false) else session
+                },
+            )
+            return payload.asObject()?.get("accepted").asBoolean()
+                ?: payload.asObject()?.get("ok").asBoolean()
+                ?: true
+        }
+
+        override suspend fun markSessionUnread(sessionId: String): Boolean {
+            val backendSessionId = toBackendSessionId(sessionId)
+            val payload = requestJson(
+                method = "DELETE",
+                path = "/sessions/$backendSessionId/mark-seen",
+            )
+            cache.storeSessions(
+                cache.observeSessions().first().map { session ->
+                    if (session.id == sessionId) session.copy(hasUnread = true) else session
+                },
+            )
+            return payload.asObject()?.get("accepted").asBoolean()
+                ?: payload.asObject()?.get("ok").asBoolean()
+                ?: true
         }
     }
 
@@ -537,29 +647,12 @@ class RelaySupervisorRuntime(
             )
             payload["sessions"].asJsonArray().forEach { element ->
                 val session = element as? JsonObject ?: return@forEach
-                if (session["isArchived"].asBoolean() == true) {
+                val summary = session.toSessionSummary(fallbackProjectId = id)
+                    ?: return@forEach
+                if (summary.isArchived) {
                     return@forEach
                 }
-                val sessionId = session["id"].asString() ?: return@forEach
-                val title = session["customTitle"].asString()
-                    ?: session["title"].asString()
-                    ?: "Untitled session"
-                val pendingInputType = session["pendingInputType"].asString()
-                val activity = session["activity"].asString()
-                val status = when {
-                    pendingInputType != null -> SessionStatus.NEEDS_ATTENTION
-                    activity == "in-turn" || activity == "waiting-input" -> SessionStatus.RUNNING
-                    else -> SessionStatus.IDLE
-                }
-                val hasUnread = session["hasUnread"].asBoolean() ?: (pendingInputType != null)
-                sessions += SessionSummary(
-                    id = sessionId,
-                    projectId = session["projectId"].asString() ?: id,
-                    title = title,
-                    status = status,
-                    updatedLabel = session["updatedAt"].asString() ?: "just now",
-                    hasUnread = hasUnread,
-                )
+                sessions += summary
             }
         }
 
@@ -860,6 +953,83 @@ private fun sortProjectsForDisplay(projects: List<ProjectSummary>): List<Project
     return projects.sortedWith(
         compareByDescending<ProjectSummary> { it.needsAttentionCount }
             .thenByDescending { it.latestActivityAt.orEmpty() },
+    )
+}
+
+private fun buildGlobalSessionsPath(
+    filters: GlobalSessionFilters,
+    after: String?,
+    limit: Int,
+): String {
+    val params = buildList {
+        filters.project?.let { add("project" to it) }
+        filters.query?.let { add("q" to it) }
+        filters.status?.let { add("status" to it) }
+        filters.provider?.let { add("provider" to it) }
+        filters.executor?.let { add("executor" to it) }
+        filters.age?.let { add("age" to it) }
+        after?.let { add("after" to it) }
+        add("limit" to limit.toString())
+        if (filters.includeArchived) add("includeArchived" to "true")
+        if (filters.starred) add("starred" to "true")
+        if (filters.includeStats) add("includeStats" to "true")
+    }
+    if (params.isEmpty()) {
+        return "/sessions"
+    }
+    return "/sessions?" + params.joinToString("&") { (key, value) ->
+        "${key.urlEncode()}=${value.urlEncode()}"
+    }
+}
+
+private fun String.urlEncode(): String {
+    return URLEncoder.encode(this, StandardCharsets.UTF_8.name())
+}
+
+private fun JsonObject.toSessionSummary(fallbackProjectId: String? = null): SessionSummary? {
+    val sessionId = this["id"].asString() ?: this["sessionId"].asString() ?: return null
+    val title = this["customTitle"].asString()
+        ?: this["title"].asString()
+        ?: this["summary"].asString()
+        ?: "Untitled session"
+    val pendingInputType = this["pendingInputType"].asString()
+    val activity = this["activity"].asString()
+    val statusText = this["status"].asString()
+    val status = when {
+        pendingInputType != null -> SessionStatus.NEEDS_ATTENTION
+        statusText == "needs_attention" || statusText == "needs-attention" -> SessionStatus.NEEDS_ATTENTION
+        statusText == "running" || statusText == "active" -> SessionStatus.RUNNING
+        activity == "in-turn" || activity == "waiting-input" -> SessionStatus.RUNNING
+        else -> SessionStatus.IDLE
+    }
+    val isArchived = this["isArchived"].asBoolean() ?: this["archived"].asBoolean() ?: false
+    val isStarred = this["isStarred"].asBoolean() ?: this["starred"].asBoolean() ?: false
+    return SessionSummary(
+        id = sessionId,
+        projectId = this["projectId"].asString() ?: fallbackProjectId ?: "unknown-project",
+        title = title,
+        status = status,
+        updatedLabel = this["updatedAt"].asString()
+            ?: this["lastActivityAt"].asString()
+            ?: this["createdAt"].asString()
+            ?: "just now",
+        hasUnread = this["hasUnread"].asBoolean() ?: (pendingInputType != null),
+        provider = this["provider"].asString(),
+        model = this["model"].asString(),
+        ownership = this["ownership"].asString(),
+        activity = activity,
+        isArchived = isArchived,
+        isStarred = isStarred,
+        executor = this["executor"].asString(),
+    )
+}
+
+private fun JsonObject.toGlobalSessionStats(): GlobalSessionStats {
+    return GlobalSessionStats(
+        total = this["total"].asInt() ?: 0,
+        unread = this["unread"].asInt() ?: 0,
+        starred = this["starred"].asInt() ?: 0,
+        archived = this["archived"].asInt() ?: 0,
     )
 }
 

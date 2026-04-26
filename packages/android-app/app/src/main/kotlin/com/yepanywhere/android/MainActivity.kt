@@ -151,8 +151,29 @@ private fun YepAnywhereAndroidApp(
             activeSessionState = activeSessionState,
             activeSessionCallbacks = activeSessionCallbacks,
             onSectionSelected = shellViewModel::selectSection,
-            onProjectSelected = shellViewModel::selectProject,
+            onProjectSelected = { projectId ->
+                shellViewModel.selectProject(projectId)
+                sessionsViewModel.applyFilters(project = projectId)
+            },
             onSessionSelected = shellViewModel::selectSession,
+            onSessionFiltersApplied = { filters ->
+                sessionsViewModel.applyFilters(
+                    project = filters.project,
+                    query = filters.query,
+                    status = filters.status,
+                    provider = filters.provider,
+                    executor = filters.executor,
+                    age = filters.age,
+                    includeArchived = filters.includeArchived,
+                    starred = filters.starred,
+                )
+            },
+            onLoadMoreSessions = sessionsViewModel::loadMore,
+            onSessionSelectionToggled = sessionsViewModel::toggleSelection,
+            onBulkArchiveSessions = sessionsViewModel::bulkArchiveSelected,
+            onBulkStarSessions = sessionsViewModel::bulkStarSelected,
+            onBulkMarkSessionsRead = sessionsViewModel::bulkMarkReadSelected,
+            onBulkMarkSessionsUnread = sessionsViewModel::bulkMarkUnreadSelected,
             onLogout = relayLoginViewModel::logout,
         )
     } else {
