@@ -2,6 +2,7 @@ package com.yepanywhere.android
 
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.InboxTier
 import com.yepanywhere.android.core.model.AgentProcessesPage
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
@@ -251,6 +252,66 @@ class SupervisorSectionViewModelsTest {
     }
 
     @Test
+    fun inboxViewModelFiltersProjectsAndMarksReadState() = runTest {
+        val inboxItems = MutableStateFlow(
+            listOf(
+                InboxItem(
+                    id = "inbox-1",
+                    projectId = "project-yep",
+                    sessionId = "session-1",
+                    title = "Approval required",
+                    subtitle = "Review permission request",
+                    kind = InboxItemKind.APPROVAL,
+                    tier = InboxTier.NEEDS_ATTENTION,
+                    isUnread = true,
+                ),
+                InboxItem(
+                    id = "inbox-2",
+                    projectId = "project-relay",
+                    sessionId = "session-2",
+                    title = "Session update",
+                    subtitle = "Relay activity",
+                    kind = InboxItemKind.NOTIFICATION,
+                    tier = InboxTier.UNREAD_8H,
+                    isUnread = true,
+                ),
+            ),
+        )
+        val projects = MutableStateFlow(
+            listOf(
+                ProjectSummary(id = "project-yep", name = "Yep Anywhere"),
+                ProjectSummary(id = "project-relay", name = "Relay Backend"),
+            ),
+        )
+        val sessionsRepository = FakeSessionsRepository(
+            sessions = MutableStateFlow(emptyList()),
+            timeline = MutableStateFlow(emptyTimeline()),
+        )
+        val externalScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = InboxScreenViewModel(
+            observeInboxUseCase = ObserveInboxUseCase(FakeInboxRepository(inboxItems)),
+            projectsRepository = FakeProjectsRepository(projects),
+            sessionsRepository = sessionsRepository,
+            scope = externalScope,
+        )
+        val collectionJob = externalScope.launch { viewModel.uiState.collect {} }
+
+        advanceUntilIdle()
+        viewModel.selectProject("project-relay")
+        viewModel.markSessionRead("session-2")
+        viewModel.markSessionUnread("session-1")
+        advanceUntilIdle()
+
+        assertEquals("project-relay", viewModel.uiState.value.selectedProjectId)
+        assertEquals(listOf("project-yep", "project-relay"), viewModel.uiState.value.projects.map { it.id })
+        assertEquals(setOf("session-2"), sessionsRepository.read)
+        assertEquals(setOf("session-1"), sessionsRepository.unread)
+
+        collectionJob.cancel()
+        externalScope.cancel()
+    }
+
+    @Test
     fun newSessionViewModelLoadsDefaultsAndStartsDirectOrTwoPhaseSession() = runTest {
         val projects = MutableStateFlow(
             listOf(ProjectSummary(id = "project-yep", name = "Yep Anywhere")),
@@ -365,6 +426,20 @@ class SupervisorSectionViewModelsTest {
         override fun observeSessionTimeline(sessionId: String): Flow<SessionTimeline> = timeline
 
         override suspend fun sendReply(sessionId: String, text: String) = Unit
+
+        override suspend fun markSessionSeen(
+            sessionId: String,
+            timestamp: String?,
+            messageId: String?,
+        ): Boolean {
+            read += sessionId
+            return true
+        }
+
+        override suspend fun markSessionUnread(sessionId: String): Boolean {
+            unread += sessionId
+            return true
+        }
 
         override suspend fun loadAgentProcesses(includeTerminated: Boolean): AgentProcessesPage {
             agentProcessLoads += 1

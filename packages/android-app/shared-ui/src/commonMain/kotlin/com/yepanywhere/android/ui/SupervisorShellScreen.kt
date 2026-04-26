@@ -38,6 +38,7 @@ import com.yepanywhere.android.core.model.AgentMapping
 import com.yepanywhere.android.core.model.AgentSession
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.InboxTier
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.MessageContentBlock
@@ -110,6 +111,9 @@ data class InboxScreenState(
     val title: String,
     val subtitle: String,
     val items: List<InboxItem>,
+    val projects: List<ProjectSummary> = emptyList(),
+    val selectedProjectId: String? = null,
+    val isUpdatingReadState: Boolean = false,
 )
 
 data class AgentsScreenState(
@@ -234,6 +238,9 @@ fun SupervisorShellScreen(
     onBulkStarSessions: () -> Unit = {},
     onBulkMarkSessionsRead: () -> Unit = {},
     onBulkMarkSessionsUnread: () -> Unit = {},
+    onInboxProjectSelected: (String?) -> Unit = {},
+    onInboxMarkRead: (String) -> Unit = {},
+    onInboxMarkUnread: (String) -> Unit = {},
     onLogout: () -> Unit,
 ) {
     AndroidAppTheme {
@@ -312,6 +319,9 @@ fun SupervisorShellScreen(
                     SupervisorShellSection.INBOX -> InboxSection(
                         state = inboxState,
                         connectionStatus = state.snapshot.connectionStatus,
+                        onProjectSelected = onInboxProjectSelected,
+                        onMarkRead = onInboxMarkRead,
+                        onMarkUnread = onInboxMarkUnread,
                     )
                     SupervisorShellSection.SETTINGS -> PlaceholderSection(
                         title = "Settings",
@@ -1064,22 +1074,126 @@ private fun SessionsProjectSelector(
 private fun InboxSection(
     state: InboxScreenState,
     connectionStatus: RelayConnectionStatus,
+    onProjectSelected: (String?) -> Unit,
+    onMarkRead: (String) -> Unit,
+    onMarkUnread: (String) -> Unit,
 ) {
     val emptyState = listSectionEmptyState(
         connectionStatus = connectionStatus,
         singularName = "inbox item",
     )
-    SectionList(
-        title = state.title,
-        subtitle = state.subtitle,
-        items = state.items,
-        emptyState = emptyState,
-    ) { item ->
+    val visibleItems = state.items.filter { item ->
+        state.selectedProjectId == null || item.projectId == state.selectedProjectId
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle(title = state.title, subtitle = state.subtitle)
+        InboxProjectFilter(
+            projects = state.projects,
+            selectedProjectId = state.selectedProjectId,
+            onProjectSelected = onProjectSelected,
+        )
+        if (visibleItems.isEmpty()) {
+            EmptyStateCard(emptyState.title, emptyState.body)
+        } else {
+            InboxTier.entries.forEach { tier ->
+                val tierItems = visibleItems.filter { it.tier == tier }
+                if (tierItems.isNotEmpty()) {
+                    SectionList(
+                        title = tier.label,
+                        subtitle = "${tierItems.size} item${if (tierItems.size == 1) "" else "s"}",
+                        items = tierItems,
+                    ) { item ->
+                        InboxItemCard(
+                            item = item,
+                            isUpdating = state.isUpdatingReadState,
+                            onMarkRead = onMarkRead,
+                            onMarkUnread = onMarkUnread,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboxProjectFilter(
+    projects: List<ProjectSummary>,
+    selectedProjectId: String?,
+    onProjectSelected: (String?) -> Unit,
+) {
+    if (projects.isEmpty()) {
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "Project filter",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("inbox-project-all"),
+                onClick = { onProjectSelected(null) },
+                enabled = selectedProjectId != null,
+            ) {
+                Text("All")
+            }
+            projects.forEach { project ->
+                Button(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("inbox-project-${project.id}"),
+                    onClick = { onProjectSelected(project.id) },
+                    enabled = selectedProjectId != project.id,
+                ) {
+                    Text(project.name)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboxItemCard(
+    item: InboxItem,
+    isUpdating: Boolean,
+    onMarkRead: (String) -> Unit,
+    onMarkUnread: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         ListCard(
             title = item.title,
             subtitle = item.subtitle,
             trailing = if (item.isUnread) item.kind.name.lowercase().replaceFirstChar(Char::titlecase) else null,
         )
+        item.sessionId?.let { sessionId ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("inbox-mark-read-$sessionId"),
+                    enabled = item.isUnread && !isUpdating,
+                    onClick = { onMarkRead(sessionId) },
+                ) {
+                    Text("Read")
+                }
+                Button(
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("inbox-mark-unread-$sessionId"),
+                    enabled = !item.isUnread && !isUpdating,
+                    onClick = { onMarkUnread(sessionId) },
+                ) {
+                    Text("Unread")
+                }
+            }
+        }
     }
 }
 

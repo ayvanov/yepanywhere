@@ -1,6 +1,7 @@
 package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.InboxTier
 import com.yepanywhere.android.core.model.GlobalSessionFilters
 import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.NewSessionDefaults
@@ -144,11 +145,39 @@ class RelaySupervisorRuntimeTest {
         assertEquals(1, snapshot.sessions.size)
         assertEquals("session-1", snapshot.sessions.first().id)
         assertTrue(snapshot.sessions.none { it.id == "archived-session" })
-        assertEquals(1, snapshot.inboxItems.size)
+        assertEquals(5, snapshot.inboxItems.size)
         assertEquals(InboxItemKind.APPROVAL, snapshot.inboxItems.first().kind)
         assertTrue(snapshot.timeline.messages.any { it.body.contains("real backend message") })
         assertEquals("request-1", snapshot.pendingRequests.first().id)
         assertEquals(RelayConnectionStatus.CONNECTED, snapshot.connectionStatus)
+    }
+
+    @Test
+    fun inboxRefreshPreservesWebPriorityTiers() = runTest(UnconfinedTestDispatcher()) {
+        val gateway = FakeRelayRealtimeGateway()
+        val runtime = RelaySupervisorRuntime(
+            scope = backgroundScope,
+            realtimeGatewayOverride = gateway,
+            relayAuthHandshake = successfulHandshake(),
+        )
+        runtime.relayAuthRepository.login(
+            username = "demo@yepanywhere",
+            password = "secret",
+            relayUrl = "wss://relay.yepanywhere.local",
+        )
+
+        runtime.inboxRepository.refreshInbox()
+
+        assertEquals(
+            listOf(
+                InboxTier.NEEDS_ATTENTION,
+                InboxTier.ACTIVE,
+                InboxTier.RECENT_ACTIVITY,
+                InboxTier.UNREAD_8H,
+                InboxTier.UNREAD_24H,
+            ),
+            runtime.inboxRepository.observeInboxItems().first().map { it.tier },
+        )
     }
 
     @Test
@@ -1193,10 +1222,50 @@ class RelaySupervisorRuntimeTest {
                             ),
                         ),
                     ),
-                    "active" to JsonArray(emptyList()),
-                    "recentActivity" to JsonArray(emptyList()),
-                    "unread8h" to JsonArray(emptyList()),
-                    "unread24h" to JsonArray(emptyList()),
+                    "active" to JsonArray(
+                        listOf(
+                            jsonObject(
+                                "sessionId" to JsonPrimitive("active-session"),
+                                "projectId" to JsonPrimitive("project-1"),
+                                "projectName" to JsonPrimitive("Yep Anywhere"),
+                                "sessionTitle" to JsonPrimitive("Active Android supervisor"),
+                                "hasUnread" to JsonPrimitive(false),
+                            ),
+                        ),
+                    ),
+                    "recentActivity" to JsonArray(
+                        listOf(
+                            jsonObject(
+                                "sessionId" to JsonPrimitive("recent-session"),
+                                "projectId" to JsonPrimitive("project-1"),
+                                "projectName" to JsonPrimitive("Yep Anywhere"),
+                                "sessionTitle" to JsonPrimitive("Recent Android supervisor"),
+                                "hasUnread" to JsonPrimitive(false),
+                            ),
+                        ),
+                    ),
+                    "unread8h" to JsonArray(
+                        listOf(
+                            jsonObject(
+                                "sessionId" to JsonPrimitive("unread-8h-session"),
+                                "projectId" to JsonPrimitive("project-1"),
+                                "projectName" to JsonPrimitive("Yep Anywhere"),
+                                "sessionTitle" to JsonPrimitive("Unread 8h Android supervisor"),
+                                "hasUnread" to JsonPrimitive(true),
+                            ),
+                        ),
+                    ),
+                    "unread24h" to JsonArray(
+                        listOf(
+                            jsonObject(
+                                "sessionId" to JsonPrimitive("unread-24h-session"),
+                                "projectId" to JsonPrimitive("project-2"),
+                                "projectName" to JsonPrimitive("Relay Backend"),
+                                "sessionTitle" to JsonPrimitive("Unread 24h Android supervisor"),
+                                "hasUnread" to JsonPrimitive(true),
+                            ),
+                        ),
+                    ),
                 )
 
                 "/projects/project-1/sessions/session-1" -> jsonObject(

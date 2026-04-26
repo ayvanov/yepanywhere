@@ -275,29 +275,93 @@ private fun String?.blankToNull(): String? = this?.trim()?.takeIf { it.isNotEmpt
 
 class InboxScreenViewModel(
     private val observeInboxUseCase: ObserveInboxUseCase,
+    private val projectsRepository: ProjectsRepository? = null,
+    private val sessionsRepository: SessionsRepository? = null,
     scope: CoroutineScope? = null,
 ) : ViewModel() {
     private val coroutineScope = scope ?: viewModelScope
+    private val selectedProjectId = MutableStateFlow<String?>(null)
+    private val isUpdatingReadState = MutableStateFlow(false)
 
-    val uiState: StateFlow<InboxScreenState> = observeInboxUseCase().map { inboxItems ->
+    private val mutableUiState = MutableStateFlow(
         InboxScreenState(
             title = "Inbox",
-            subtitle = "Minimal notification and approval feed for mobile supervision.",
-            items = inboxItems,
-        )
-    }.stateIn(
-        scope = coroutineScope,
-        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-        initialValue = InboxScreenState(
-            title = "Inbox",
-            subtitle = "Minimal notification and approval feed for mobile supervision.",
+            subtitle = "Priority inbox with project filtering and read-state actions.",
             items = emptyList(),
         ),
     )
+    val uiState: StateFlow<InboxScreenState> = mutableUiState.asStateFlow()
+
+    init {
+        coroutineScope.launch {
+            observeInboxUseCase().collect { inboxItems ->
+                mutableUiState.update { state ->
+                    state.copy(items = inboxItems)
+                }
+            }
+        }
+        coroutineScope.launch {
+            projectsRepository?.observeProjects()?.collect { projectList ->
+                mutableUiState.update { state ->
+                    state.copy(projects = projectList)
+                }
+            }
+        }
+        coroutineScope.launch {
+            selectedProjectId.collect { projectId ->
+                mutableUiState.update { it.copy(selectedProjectId = projectId) }
+            }
+        }
+        coroutineScope.launch {
+            isUpdatingReadState.collect { updating ->
+                mutableUiState.update { it.copy(isUpdatingReadState = updating) }
+            }
+        }
+    }
+
+    fun selectProject(projectId: String?) {
+        selectedProjectId.value = projectId.blankToNull()
+    }
+
+    fun markSessionRead(sessionId: String) {
+        coroutineScope.launch {
+            updateReadState { repository ->
+                repository.markSessionSeen(sessionId)
+            }
+        }
+    }
+
+    fun markSessionUnread(sessionId: String) {
+        coroutineScope.launch {
+            updateReadState { repository ->
+                repository.markSessionUnread(sessionId)
+            }
+        }
+    }
+
+    private suspend fun updateReadState(action: suspend (SessionsRepository) -> Boolean) {
+        val repository = sessionsRepository ?: return
+        isUpdatingReadState.value = true
+        try {
+            action(repository)
+        } finally {
+            isUpdatingReadState.value = false
+        }
+    }
 
     companion object {
-        fun factory(observeInboxUseCase: ObserveInboxUseCase): ViewModelProvider.Factory {
-            return sectionFactory { InboxScreenViewModel(observeInboxUseCase = observeInboxUseCase) }
+        fun factory(
+            observeInboxUseCase: ObserveInboxUseCase,
+            projectsRepository: ProjectsRepository,
+            sessionsRepository: SessionsRepository,
+        ): ViewModelProvider.Factory {
+            return sectionFactory {
+                InboxScreenViewModel(
+                    observeInboxUseCase = observeInboxUseCase,
+                    projectsRepository = projectsRepository,
+                    sessionsRepository = sessionsRepository,
+                )
+            }
         }
     }
 }

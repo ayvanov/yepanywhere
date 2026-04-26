@@ -2,6 +2,7 @@ package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.InboxTier
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.ProjectSummary
 import com.yepanywhere.android.core.model.RelayConnectionStatus
@@ -97,6 +98,7 @@ internal fun InboxItem.toEntity(sortIndex: Int): InboxItemEntity {
         title = title,
         subtitle = subtitle,
         kind = kind.name,
+        tier = tier.name,
         isUnread = isUnread,
         sortIndex = sortIndex,
     )
@@ -110,6 +112,7 @@ internal fun InboxItemEntity.toModel(): InboxItem {
         title = title,
         subtitle = subtitle,
         kind = enumOrDefault(kind, InboxItemKind.NOTIFICATION),
+        tier = enumOrDefault(tier, InboxTier.RECENT_ACTIVITY),
         isUnread = isUnread,
     )
 }

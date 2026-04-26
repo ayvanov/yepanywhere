@@ -227,6 +227,9 @@ private fun YepAnywhereAndroidApp(
             onBulkStarSessions = sessionsViewModel::bulkStarSelected,
             onBulkMarkSessionsRead = sessionsViewModel::bulkMarkReadSelected,
             onBulkMarkSessionsUnread = sessionsViewModel::bulkMarkUnreadSelected,
+            onInboxProjectSelected = inboxViewModel::selectProject,
+            onInboxMarkRead = inboxViewModel::markSessionRead,
+            onInboxMarkUnread = inboxViewModel::markSessionUnread,
             onLogout = relayLoginViewModel::logout,
         )
     } else {

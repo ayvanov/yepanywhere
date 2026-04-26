@@ -25,6 +25,16 @@ enum class InboxItemKind {
     NOTIFICATION,
 }
 
+enum class InboxTier(
+    val label: String,
+) {
+    NEEDS_ATTENTION("Needs attention"),
+    ACTIVE("Active"),
+    RECENT_ACTIVITY("Recent activity"),
+    UNREAD_8H("Unread 8h"),
+    UNREAD_24H("Unread 24h"),
+}
+
 data class RelaySession(
     val username: String,
     val relayUrl: String,
@@ -354,6 +364,7 @@ data class InboxItem(
     val title: String,
     val subtitle: String,
     val kind: InboxItemKind,
+    val tier: InboxTier = InboxTier.NEEDS_ATTENTION,
     val isUnread: Boolean,
 )
 

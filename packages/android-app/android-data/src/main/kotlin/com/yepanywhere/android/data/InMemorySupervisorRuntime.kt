@@ -2,6 +2,7 @@ package com.yepanywhere.android.data
 
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.InboxTier
 import com.yepanywhere.android.core.model.AgentMapping
 import com.yepanywhere.android.core.model.AgentProcessesPage
 import com.yepanywhere.android.core.model.AgentSession
@@ -796,6 +797,7 @@ fun defaultSupervisorShellSnapshot(): SupervisorShellSnapshot {
                 title = "Approval required",
                 subtitle = "Grant network access to relay diagnostics",
                 kind = InboxItemKind.APPROVAL,
+                tier = InboxTier.NEEDS_ATTENTION,
                 isUnread = true,
             ),
             InboxItem(
@@ -805,6 +807,7 @@ fun defaultSupervisorShellSnapshot(): SupervisorShellSnapshot {
                 title = "Question from active session",
                 subtitle = "Choose between cached shell states and live sync",
                 kind = InboxItemKind.QUESTION,
+                tier = InboxTier.NEEDS_ATTENTION,
                 isUnread = true,
             ),
             InboxItem(
@@ -814,6 +817,7 @@ fun defaultSupervisorShellSnapshot(): SupervisorShellSnapshot {
                 title = "Resync complete",
                 subtitle = "Cached read-only snapshot refreshed",
                 kind = InboxItemKind.NOTIFICATION,
+                tier = InboxTier.RECENT_ACTIVITY,
                 isUnread = false,
             ),
         ),

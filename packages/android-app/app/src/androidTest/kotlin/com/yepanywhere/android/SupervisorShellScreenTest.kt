@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -19,6 +20,7 @@ import com.yepanywhere.android.core.model.AgentMapping
 import com.yepanywhere.android.core.model.AgentSession
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.InboxTier
 import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.PendingInputRequest
 import com.yepanywhere.android.core.model.PendingSessionMessage
@@ -770,6 +772,114 @@ class SupervisorShellScreenTest {
             .assertIsDisplayed()
     }
 
+    @Test
+    fun inboxSectionRendersTiersProjectFilterAndReadActions() {
+        var selectedProjectId: String? = null
+        var markedReadSessionId: String? = null
+        var markedUnreadSessionId: String? = null
+
+        renderShell(
+            shellState = shellState(selectedSection = SupervisorShellSection.INBOX),
+            projectsState = projectsState(
+                projects = listOf(
+                    ProjectSummary(id = "project-1", name = "Yep Anywhere"),
+                    ProjectSummary(id = "project-2", name = "Relay Backend"),
+                ),
+            ),
+            inboxState = InboxScreenState(
+                title = "Inbox",
+                subtitle = "Inbox tiers",
+                selectedProjectId = "project-1",
+                projects = listOf(
+                    ProjectSummary(id = "project-1", name = "Yep Anywhere"),
+                    ProjectSummary(id = "project-2", name = "Relay Backend"),
+                ),
+                items = listOf(
+                    InboxItem(
+                        id = "needs-attention-1",
+                        projectId = "project-1",
+                        sessionId = "session-1",
+                        title = "Approval required",
+                        subtitle = "Review command",
+                        kind = InboxItemKind.APPROVAL,
+                        tier = InboxTier.NEEDS_ATTENTION,
+                        isUnread = true,
+                    ),
+                    InboxItem(
+                        id = "active-1",
+                        projectId = "project-1",
+                        sessionId = "session-2",
+                        title = "Session update",
+                        subtitle = "In turn",
+                        kind = InboxItemKind.NOTIFICATION,
+                        tier = InboxTier.ACTIVE,
+                        isUnread = false,
+                    ),
+                    InboxItem(
+                        id = "recent-1",
+                        projectId = "project-1",
+                        sessionId = "session-3",
+                        title = "Session update",
+                        subtitle = "Recently changed session",
+                        kind = InboxItemKind.NOTIFICATION,
+                        tier = InboxTier.RECENT_ACTIVITY,
+                        isUnread = false,
+                    ),
+                    InboxItem(
+                        id = "unread-8h-1",
+                        projectId = "project-1",
+                        sessionId = "session-4",
+                        title = "Session update",
+                        subtitle = "Unread within 8h",
+                        kind = InboxItemKind.NOTIFICATION,
+                        tier = InboxTier.UNREAD_8H,
+                        isUnread = true,
+                    ),
+                    InboxItem(
+                        id = "unread-24h-other",
+                        projectId = "project-2",
+                        sessionId = "session-5",
+                        title = "Session update",
+                        subtitle = "Hidden by project filter",
+                        kind = InboxItemKind.NOTIFICATION,
+                        tier = InboxTier.UNREAD_24H,
+                        isUnread = true,
+                    ),
+                ),
+            ),
+            onInboxProjectSelected = { selectedProjectId = it },
+            onInboxMarkRead = { markedReadSessionId = it },
+            onInboxMarkUnread = { markedUnreadSessionId = it },
+        )
+
+        composeRule.onNodeWithText("Needs attention")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Active")
+            .assertIsDisplayed()
+        scrollShellToText("Recent activity")
+        composeRule.onNodeWithText("Recent activity")
+            .assertIsDisplayed()
+        scrollShellToText("Unread 8h")
+        composeRule.onNodeWithText("Unread 8h")
+            .assertIsDisplayed()
+        composeRule.onAllNodesWithText("Hidden by project filter")
+            .assertCountEquals(0)
+
+        composeRule.onNodeWithTag("inbox-project-project-2")
+            .performClick()
+        scrollShellTo("inbox-mark-read-session-4")
+        composeRule.onNodeWithTag("inbox-mark-read-session-4")
+            .performClick()
+        composeRule.onNodeWithTag("inbox-mark-unread-session-2")
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("project-2", selectedProjectId)
+            assertEquals("session-4", markedReadSessionId)
+            assertEquals("session-2", markedUnreadSessionId)
+        }
+    }
+
     private fun renderShell(
         shellState: SupervisorShellScreenState = shellState(),
         projectsState: ProjectsScreenState = projectsState(),
@@ -786,6 +896,9 @@ class SupervisorShellScreenTest {
         onSectionSelected: (SupervisorShellSection) -> Unit = {},
         onProjectSelected: (String) -> Unit = {},
         onSessionSelected: (projectId: String, sessionId: String) -> Unit = { _, _ -> },
+        onInboxProjectSelected: (String?) -> Unit = {},
+        onInboxMarkRead: (String) -> Unit = {},
+        onInboxMarkUnread: (String) -> Unit = {},
         onLogout: () -> Unit = {},
     ) {
         composeRule.setContent {
@@ -800,6 +913,9 @@ class SupervisorShellScreenTest {
                 onSectionSelected = onSectionSelected,
                 onProjectSelected = onProjectSelected,
                 onSessionSelected = onSessionSelected,
+                onInboxProjectSelected = onInboxProjectSelected,
+                onInboxMarkRead = onInboxMarkRead,
+                onInboxMarkUnread = onInboxMarkUnread,
                 onLogout = onLogout,
             )
         }
@@ -808,6 +924,11 @@ class SupervisorShellScreenTest {
     private fun scrollShellTo(tag: String) {
         composeRule.onNodeWithTag("supervisor-shell-scroll")
             .performScrollToNode(hasTestTag(tag))
+    }
+
+    private fun scrollShellToText(text: String) {
+        composeRule.onNodeWithTag("supervisor-shell-scroll")
+            .performScrollToNode(hasText(text))
     }
 
     private fun shellState(

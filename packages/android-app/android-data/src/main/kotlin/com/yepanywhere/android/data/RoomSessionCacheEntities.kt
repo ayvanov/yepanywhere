@@ -49,6 +49,7 @@ internal data class InboxItemEntity(
     val title: String,
     val subtitle: String,
     val kind: String,
+    val tier: String,
     val isUnread: Boolean,
     val sortIndex: Int,
 )

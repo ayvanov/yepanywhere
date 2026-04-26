@@ -14,7 +14,7 @@ import androidx.room.RoomDatabase
         InboxItemEntity::class,
         PendingRequestEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 internal abstract class SessionCacheDatabase : RoomDatabase() {
@@ -28,7 +28,9 @@ internal abstract class SessionCacheDatabase : RoomDatabase() {
                 context.applicationContext,
                 SessionCacheDatabase::class.java,
                 DATABASE_NAME,
-            ).build()
+            )
+                .fallbackToDestructiveMigration()
+                .build()
         }
     }
 }

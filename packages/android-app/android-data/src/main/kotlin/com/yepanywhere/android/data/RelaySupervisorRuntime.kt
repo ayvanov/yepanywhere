@@ -9,6 +9,7 @@ import com.yepanywhere.android.core.model.GlobalSessionStats
 import com.yepanywhere.android.core.model.GlobalSessionsPage
 import com.yepanywhere.android.core.model.InboxItem
 import com.yepanywhere.android.core.model.InboxItemKind
+import com.yepanywhere.android.core.model.InboxTier
 import com.yepanywhere.android.core.model.MessageContentBlock
 import com.yepanywhere.android.core.model.NewSessionDefaults
 import com.yepanywhere.android.core.model.NewSessionOptions
@@ -476,6 +477,7 @@ class RelaySupervisorRuntime(
                     if (session.id == sessionId) session.copy(hasUnread = false) else session
                 },
             )
+            refreshInboxInternal()
             return payload.asObject()?.get("accepted").asBoolean()
                 ?: payload.asObject()?.get("ok").asBoolean()
                 ?: true
@@ -492,6 +494,7 @@ class RelaySupervisorRuntime(
                     if (session.id == sessionId) session.copy(hasUnread = true) else session
                 },
             )
+            refreshInboxInternal()
             return payload.asObject()?.get("accepted").asBoolean()
                 ?: payload.asObject()?.get("ok").asBoolean()
                 ?: true
@@ -986,23 +989,23 @@ class RelaySupervisorRuntime(
             path = "/inbox",
         )
         val orderedSections = listOf(
-            "needsAttention" to InboxItemKind.APPROVAL,
-            "active" to InboxItemKind.NOTIFICATION,
-            "recentActivity" to InboxItemKind.NOTIFICATION,
-            "unread8h" to InboxItemKind.NOTIFICATION,
-            "unread24h" to InboxItemKind.NOTIFICATION,
+            InboxSectionSpec("needsAttention", InboxTier.NEEDS_ATTENTION, InboxItemKind.APPROVAL),
+            InboxSectionSpec("active", InboxTier.ACTIVE, InboxItemKind.NOTIFICATION),
+            InboxSectionSpec("recentActivity", InboxTier.RECENT_ACTIVITY, InboxItemKind.NOTIFICATION),
+            InboxSectionSpec("unread8h", InboxTier.UNREAD_8H, InboxItemKind.NOTIFICATION),
+            InboxSectionSpec("unread24h", InboxTier.UNREAD_24H, InboxItemKind.NOTIFICATION),
         )
 
         val inboxItems = mutableListOf<InboxItem>()
-        orderedSections.forEach { (sectionKey, fallbackKind) ->
-            payload[sectionKey].asJsonArray().forEach { element ->
+        orderedSections.forEach { section ->
+            payload[section.key].asJsonArray().forEach { element ->
                 val item = element as? JsonObject ?: return@forEach
                 val sessionId = item["sessionId"].asString()
                 val pendingInputType = item["pendingInputType"].asString()
                 val kind = when (pendingInputType) {
                     "tool-approval" -> InboxItemKind.APPROVAL
                     "user-question" -> InboxItemKind.QUESTION
-                    else -> fallbackKind
+                    else -> section.fallbackKind
                 }
                 val uiSessionId = sessionId?.let(::toUiSessionId)
                 val title = when (kind) {
@@ -1011,12 +1014,13 @@ class RelaySupervisorRuntime(
                     InboxItemKind.NOTIFICATION -> "Session update"
                 }
                 inboxItems += InboxItem(
-                    id = "inbox-$sectionKey-${sessionId ?: inboxItems.size}",
+                    id = "inbox-${section.key}-${sessionId ?: inboxItems.size}",
                     projectId = item["projectId"].asString(),
                     sessionId = uiSessionId,
                     title = title,
                     subtitle = item["sessionTitle"].asString() ?: item["projectName"].asString() ?: "",
                     kind = kind,
+                    tier = section.tier,
                     isUnread = item["hasUnread"].asBoolean() ?: (pendingInputType != null),
                 )
             }
@@ -1276,6 +1280,12 @@ private fun sortProjectsForDisplay(projects: List<ProjectSummary>): List<Project
             .thenByDescending { it.latestActivityAt.orEmpty() },
     )
 }
+
+private data class InboxSectionSpec(
+    val key: String,
+    val tier: InboxTier,
+    val fallbackKind: InboxItemKind,
+)
 
 private fun buildGlobalSessionsPath(
     filters: GlobalSessionFilters,

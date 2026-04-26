@@ -97,7 +97,11 @@ class AndroidAppContainer(
     }
 
     fun createInboxScreenViewModelFactory(): ViewModelProvider.Factory {
-        return InboxScreenViewModel.factory(observeInboxUseCase)
+        return InboxScreenViewModel.factory(
+            observeInboxUseCase = observeInboxUseCase,
+            projectsRepository = androidDataLayer.projectsRepository,
+            sessionsRepository = androidDataLayer.sessionsRepository,
+        )
     }
 
     fun createActiveSessionViewModelFactory(): ViewModelProvider.Factory {
