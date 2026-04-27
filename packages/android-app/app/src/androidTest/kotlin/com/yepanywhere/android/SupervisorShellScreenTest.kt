@@ -1,6 +1,7 @@
 package com.yepanywhere.android
 
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -71,7 +72,7 @@ class SupervisorShellScreenTest {
     fun setPortraitBaseline() {
         composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.activity.resources.configuration.screenWidthDp < 840
+            composeRule.activity.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         }
     }
 
@@ -90,7 +91,12 @@ class SupervisorShellScreenTest {
             composeRule.activity.resources.configuration.screenWidthDp >= 840
         }
 
-        renderShell()
+        renderShell(
+            shellState = shellState(
+                selectedSection = SupervisorShellSection.PROJECTS,
+                selectedProjectId = "project-1",
+            ),
+        )
 
         composeRule.onNodeWithTag("supervisor-shell-wide")
             .assertIsDisplayed()
@@ -98,6 +104,18 @@ class SupervisorShellScreenTest {
             .assertIsDisplayed()
         composeRule.onNodeWithTag("supervisor-workspace")
             .assertIsDisplayed()
+        composeRule.onNodeWithTag("supervisor-wide-prompt")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("What should we build in Yep Anywhere?")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("supervisor-wide-composer")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Ask Yep Anywhere anything")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("supervisor-wide-context", useUnmergedTree = true)
+            .assertIsDisplayed()
+        composeRule.onAllNodesWithText("Yep Anywhere Android")
+            .assertCountEquals(0)
     }
 
     @Test

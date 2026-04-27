@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -13,7 +14,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -34,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -472,7 +476,7 @@ private fun WideSupervisorShell(
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(ShellBackdrop)
             .testTag("supervisor-shell-wide"),
     ) {
         SidebarPanel(
@@ -488,41 +492,49 @@ private fun WideSupervisorShell(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .padding(start = 12.dp, top = 44.dp, end = 18.dp, bottom = 18.dp)
+                .padding(start = 10.dp, top = 44.dp, end = 18.dp, bottom = 18.dp)
                 .testTag("supervisor-workspace"),
             shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            color = Color.White,
+            border = BorderStroke(1.dp, ShellBorder),
         ) {
-            ShellContentColumn(
-                modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
-                state = state,
-                projectsState = projectsState,
-                sessionsState = sessionsState,
-                agentsState = agentsState,
-                inboxState = inboxState,
-                activeSessionState = activeSessionState,
-                newSessionState = newSessionState,
-                fileState = fileState,
-                gitStatusState = gitStatusState,
-                activeSessionCallbacks = activeSessionCallbacks,
-                newSessionCallbacks = newSessionCallbacks,
-                gitStatusCallbacks = gitStatusCallbacks,
-                onProjectSelected = onProjectSelected,
-                onSessionSelected = onSessionSelected,
-                onFileSelected = onFileSelected,
-                onSessionFiltersApplied = onSessionFiltersApplied,
-                onLoadMoreSessions = onLoadMoreSessions,
-                onSessionSelectionToggled = onSessionSelectionToggled,
-                onBulkArchiveSessions = onBulkArchiveSessions,
-                onBulkStarSessions = onBulkStarSessions,
-                onBulkMarkSessionsRead = onBulkMarkSessionsRead,
-                onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
-                onInboxProjectSelected = onInboxProjectSelected,
-                onInboxMarkRead = onInboxMarkRead,
-                onInboxMarkUnread = onInboxMarkUnread,
-                onLogout = onLogout,
-            )
+            if (state.selectedSection == SupervisorShellSection.PROJECTS) {
+                WidePromptWorkspace(
+                    project = projectsState.projects.firstOrNull { it.id == state.selectedProjectId }
+                        ?: projectsState.projects.firstOrNull(),
+                    onNewSessionSelected = { onSectionSelected(SupervisorShellSection.NEW_SESSION) },
+                )
+            } else {
+                ShellContentColumn(
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
+                    state = state,
+                    projectsState = projectsState,
+                    sessionsState = sessionsState,
+                    agentsState = agentsState,
+                    inboxState = inboxState,
+                    activeSessionState = activeSessionState,
+                    newSessionState = newSessionState,
+                    fileState = fileState,
+                    gitStatusState = gitStatusState,
+                    activeSessionCallbacks = activeSessionCallbacks,
+                    newSessionCallbacks = newSessionCallbacks,
+                    gitStatusCallbacks = gitStatusCallbacks,
+                    onProjectSelected = onProjectSelected,
+                    onSessionSelected = onSessionSelected,
+                    onFileSelected = onFileSelected,
+                    onSessionFiltersApplied = onSessionFiltersApplied,
+                    onLoadMoreSessions = onLoadMoreSessions,
+                    onSessionSelectionToggled = onSessionSelectionToggled,
+                    onBulkArchiveSessions = onBulkArchiveSessions,
+                    onBulkStarSessions = onBulkStarSessions,
+                    onBulkMarkSessionsRead = onBulkMarkSessionsRead,
+                    onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
+                    onInboxProjectSelected = onInboxProjectSelected,
+                    onInboxMarkRead = onInboxMarkRead,
+                    onInboxMarkUnread = onInboxMarkUnread,
+                    onLogout = onLogout,
+                )
+            }
         }
     }
 }
@@ -539,38 +551,31 @@ private fun SidebarPanel(
 ) {
     Column(
         modifier = Modifier
-            .width(344.dp)
+            .width(280.dp)
             .fillMaxHeight()
-            .padding(horizontal = 18.dp, vertical = 24.dp)
+            .padding(horizontal = 18.dp, vertical = 18.dp)
             .testTag("supervisor-sidebar"),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
             text = "Yep Anywhere",
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
-        Text(
-            text = state.subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SupervisorShellSection.topLevelEntries.forEach { section ->
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
+                SidebarNavRow(
+                    label = section.label,
+                    value = sectionCountLabel(section, state, agentsState, gitStatusState),
+                    selected = state.selectedSection == section,
                     onClick = { onSectionSelected(section) },
-                ) {
-                    Text("${section.label} ${sectionCountLabel(section, state, agentsState, gitStatusState)}")
-                }
+                )
             }
         }
-        SummaryStrip(snapshot = state.snapshot)
+        Spacer(modifier = Modifier.height(10.dp))
         SectionTitle(
             title = "Projects",
-            subtitle = "Recent workspaces",
+            subtitle = null,
         )
         Column(
             modifier = Modifier
@@ -579,24 +584,178 @@ private fun SidebarPanel(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             projects.take(8).forEach { project ->
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
+                SidebarNavRow(
+                    label = project.name,
+                    value = null,
+                    selected = project.id == state.selectedProjectId,
                     onClick = { onProjectSelected(project.id) },
+                )
+            }
+        }
+        SidebarNavRow(
+            label = "Log out",
+            value = null,
+            selected = false,
+            onClick = onLogout,
+        )
+    }
+}
+
+@Composable
+private fun SidebarNavRow(
+    label: String,
+    value: String?,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.small,
+        color = if (selected) Color.White else Color.Transparent,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                color = ShellText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            value?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ShellMuted,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WidePromptWorkspace(
+    project: ProjectSummary?,
+    onNewSessionSelected: () -> Unit,
+) {
+    val projectName = project?.name ?: "this workspace"
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 72.dp, vertical = 28.dp)
+            .testTag("supervisor-wide-prompt"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            Text(
+                text = "What should we build in $projectName?",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Medium,
+                color = ShellText,
+            )
+            WideComposer(
+                projectName = projectName,
+                onClick = onNewSessionSelected,
+            )
+            Column(
+                modifier = Modifier.fillMaxWidth(0.74f),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+            ) {
+                PromptSuggestion("Review my recent commits for correctness risks and maintainability concerns")
+                PromptSuggestion("Unblock my most recent open PR")
+                PromptSuggestion("Connect my favorite apps to Yep Anywhere")
+            }
+        }
+    }
+}
+
+@Composable
+private fun WideComposer(
+    projectName: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth(0.66f)
+            .testTag("supervisor-wide-composer")
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.large,
+        color = Color.White,
+        border = BorderStroke(1.dp, ShellBorder),
+        shadowElevation = 2.dp,
+    ) {
+        Column {
+            Text(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, top = 16.dp, end = 18.dp, bottom = 22.dp),
+                text = "Ask $projectName anything",
+                style = MaterialTheme.typography.bodyLarge,
+                color = ShellMuted,
+            )
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("supervisor-wide-context"),
+                color = ShellSubtle,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = project.name,
+                        text = "+",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = ShellMuted,
+                    )
+                    Text(
+                        text = projectName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ShellMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "Work locally",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ShellMuted,
+                    )
+                    Text(
+                        text = "codex/native-android-core",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ShellMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
         }
-        Button(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onLogout,
-        ) {
-            Text("Log out")
-        }
+    }
+}
+
+@Composable
+private fun PromptSuggestion(text: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent,
+    ) {
+        Text(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = ShellMuted,
+        )
     }
 }
 
@@ -791,6 +950,12 @@ private fun sectionCountLabel(
 fun AndroidAppTheme(content: @Composable () -> Unit) {
     MaterialTheme(content = content)
 }
+
+private val ShellBackdrop = Color(0xFFF3F6FA)
+private val ShellBorder = Color(0xFFD6DCE3)
+private val ShellSubtle = Color(0xFFF4F4F4)
+private val ShellText = Color(0xFF202124)
+private val ShellMuted = Color(0xFF8A8D91)
 
 @Composable
 private fun ShellHeader(
@@ -2845,7 +3010,7 @@ private fun EmptyStateCard(
 @Composable
 private fun SectionTitle(
     title: String,
-    subtitle: String,
+    subtitle: String?,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
@@ -2853,11 +3018,13 @@ private fun SectionTitle(
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Medium,
         )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        subtitle?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
