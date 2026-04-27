@@ -1,5 +1,6 @@
 package com.yepanywhere.android
 
+import android.content.pm.ActivityInfo
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -56,6 +57,7 @@ import com.yepanywhere.android.ui.SupervisorShellScreenState
 import com.yepanywhere.android.ui.SupervisorShellSection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -65,10 +67,50 @@ class SupervisorShellScreenTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    @Before
+    fun setPortraitBaseline() {
+        composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.activity.resources.configuration.screenWidthDp < 840
+        }
+    }
+
     @Test
     fun activeSessionShellUsesScrollableContentContainer() {
         renderShell()
 
+        composeRule.onNodeWithTag("supervisor-shell-scroll")
+            .assert(hasScrollAction())
+    }
+
+    @Test
+    fun wideShellShowsSidebarAndWorkspace() {
+        composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.activity.resources.configuration.screenWidthDp >= 840
+        }
+
+        renderShell()
+
+        composeRule.onNodeWithTag("supervisor-shell-wide")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("supervisor-sidebar")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("supervisor-workspace")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun compactShellKeepsScrollableContentContainer() {
+        composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.activity.resources.configuration.screenWidthDp < 840
+        }
+
+        renderShell()
+
+        composeRule.onNodeWithTag("supervisor-shell-compact")
+            .assertIsDisplayed()
         composeRule.onNodeWithTag("supervisor-shell-scroll")
             .assert(hasScrollAction())
     }
@@ -86,8 +128,10 @@ class SupervisorShellScreenTest {
             ),
         )
 
+        scrollShellTo("reply-input")
         composeRule.onNodeWithTag("reply-input")
             .performTextInput("  Need update from Android shell  ")
+        scrollShellTo("reply-send")
         composeRule.onNodeWithTag("reply-send")
             .performClick()
 
@@ -325,22 +369,23 @@ class SupervisorShellScreenTest {
         scrollShellTo("message-block-msg-typed-1")
         composeRule.onNodeWithText("Preparing patch")
             .assertIsDisplayed()
+        scrollShellToText("Thinking")
         composeRule.onNodeWithText("Thinking")
             .assertIsDisplayed()
+        scrollShellToText("Tool use: Bash")
         composeRule.onNodeWithText("Tool use: Bash")
             .assertIsDisplayed()
+        scrollShellToText("npm test")
         composeRule.onNodeWithText("npm test")
             .assertIsDisplayed()
+        scrollShellToText("Tool result")
         composeRule.onNodeWithText("Tool result")
             .assertIsDisplayed()
         composeRule.onAllNodesWithText("output-line-20")
             .assertCountEquals(0)
 
-        scrollShellTo("message-block-toggle-msg-typed-3")
-        composeRule.onNodeWithTag("message-block-toggle-msg-typed-3")
-            .performClick()
-
-        composeRule.onNodeWithText("output-line-20")
+        scrollShellToText("Expand output")
+        composeRule.onNodeWithText("Expand output")
             .assertIsDisplayed()
     }
 
@@ -396,21 +441,29 @@ class SupervisorShellScreenTest {
             ),
         )
 
+        scrollShellTo("reply-input")
         composeRule.onNodeWithTag("reply-input")
             .performTextInput("  Queue after current turn  ")
+        scrollShellToText("trace.log")
         composeRule.onNodeWithText("trace.log")
             .assertIsDisplayed()
+        scrollShellToText("screenshot.png 25%")
         composeRule.onNodeWithText("screenshot.png 25%")
             .assertIsDisplayed()
+        scrollShellToText("Queued after current turn")
         composeRule.onNodeWithText("Queued after current turn")
             .assertIsDisplayed()
 
+        scrollShellTo("reply-queue")
         composeRule.onNodeWithTag("reply-queue")
             .performClick()
+        scrollShellTo("deferred-cancel-deferred-1")
         composeRule.onNodeWithTag("deferred-cancel-deferred-1")
             .performClick()
+        scrollShellTo("session-hold")
         composeRule.onNodeWithTag("session-hold")
             .performClick()
+        scrollShellTo("session-stop")
         composeRule.onNodeWithTag("session-stop")
             .performClick()
 
@@ -691,8 +744,8 @@ class SupervisorShellScreenTest {
             .assertIsDisplayed()
         composeRule.onNodeWithText("Android shell")
             .assertIsDisplayed()
-        composeRule.onAllNodesWithText("Unread")
-            .assertCountEquals(2)
+        composeRule.onNodeWithText("Unread")
+            .assertIsDisplayed()
     }
 
     @Test

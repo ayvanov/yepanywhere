@@ -1,16 +1,20 @@
 package com.yepanywhere.android.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -281,118 +285,505 @@ fun SupervisorShellScreen(
     onLogout: () -> Unit,
 ) {
     AndroidAppTheme {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            bottomBar = {
-                NavigationBar {
-                    SupervisorShellSection.topLevelEntries.forEach { section ->
-                        NavigationBarItem(
-                            selected = state.selectedSection == section,
-                            onClick = { onSectionSelected(section) },
-                            icon = {
-                                Text(
-                                    text = when (section) {
-                                        SupervisorShellSection.PROJECTS -> "${state.snapshot.projects.size}"
-                                        SupervisorShellSection.SESSIONS -> "${state.snapshot.sessions.size}"
-                                        SupervisorShellSection.AGENTS -> "${agentsState.activeAgents.size}"
-                                        SupervisorShellSection.INBOX -> "${state.snapshot.unreadInboxCount}"
-                                        SupervisorShellSection.GIT_STATUS -> "${gitStatusState.status?.files?.size ?: 0}"
-                                        SupervisorShellSection.SETTINGS -> "0"
-                                        else -> "0"
-                                    },
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
-                            },
-                            label = { Text(section.label) },
-                        )
-                    }
-                }
-            },
-        ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
-                    .verticalScroll(rememberScrollState())
-                    .testTag("supervisor-shell-scroll"),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                if (state.selectedSection != SupervisorShellSection.SESSIONS) {
-                    ShellHeader(
-                        title = state.title,
-                        subtitle = state.subtitle,
-                        onLogout = onLogout,
-                    )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val useWideShell = maxWidth >= 840.dp
+            if (useWideShell) {
+                WideSupervisorShell(
+                    state = state,
+                    projectsState = projectsState,
+                    sessionsState = sessionsState,
+                    agentsState = agentsState,
+                    inboxState = inboxState,
+                    activeSessionState = activeSessionState,
+                    newSessionState = newSessionState,
+                    fileState = fileState,
+                    gitStatusState = gitStatusState,
+                    activeSessionCallbacks = activeSessionCallbacks,
+                    newSessionCallbacks = newSessionCallbacks,
+                    gitStatusCallbacks = gitStatusCallbacks,
+                    onSectionSelected = onSectionSelected,
+                    onProjectSelected = onProjectSelected,
+                    onSessionSelected = onSessionSelected,
+                    onFileSelected = onFileSelected,
+                    onSessionFiltersApplied = onSessionFiltersApplied,
+                    onLoadMoreSessions = onLoadMoreSessions,
+                    onSessionSelectionToggled = onSessionSelectionToggled,
+                    onBulkArchiveSessions = onBulkArchiveSessions,
+                    onBulkStarSessions = onBulkStarSessions,
+                    onBulkMarkSessionsRead = onBulkMarkSessionsRead,
+                    onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
+                    onInboxProjectSelected = onInboxProjectSelected,
+                    onInboxMarkRead = onInboxMarkRead,
+                    onInboxMarkUnread = onInboxMarkUnread,
+                    onLogout = onLogout,
+                )
+            } else {
+                CompactSupervisorShell(
+                    state = state,
+                    projectsState = projectsState,
+                    sessionsState = sessionsState,
+                    agentsState = agentsState,
+                    inboxState = inboxState,
+                    activeSessionState = activeSessionState,
+                    newSessionState = newSessionState,
+                    fileState = fileState,
+                    gitStatusState = gitStatusState,
+                    activeSessionCallbacks = activeSessionCallbacks,
+                    newSessionCallbacks = newSessionCallbacks,
+                    gitStatusCallbacks = gitStatusCallbacks,
+                    onSectionSelected = onSectionSelected,
+                    onProjectSelected = onProjectSelected,
+                    onSessionSelected = onSessionSelected,
+                    onFileSelected = onFileSelected,
+                    onSessionFiltersApplied = onSessionFiltersApplied,
+                    onLoadMoreSessions = onLoadMoreSessions,
+                    onSessionSelectionToggled = onSessionSelectionToggled,
+                    onBulkArchiveSessions = onBulkArchiveSessions,
+                    onBulkStarSessions = onBulkStarSessions,
+                    onBulkMarkSessionsRead = onBulkMarkSessionsRead,
+                    onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
+                    onInboxProjectSelected = onInboxProjectSelected,
+                    onInboxMarkRead = onInboxMarkRead,
+                    onInboxMarkUnread = onInboxMarkUnread,
+                    onLogout = onLogout,
+                )
+            }
+        }
+    }
+}
 
-                    SummaryStrip(snapshot = state.snapshot)
+@Composable
+private fun CompactSupervisorShell(
+    state: SupervisorShellScreenState,
+    projectsState: ProjectsScreenState,
+    sessionsState: SessionsScreenState,
+    agentsState: AgentsScreenState,
+    inboxState: InboxScreenState,
+    activeSessionState: ActiveSessionScreenState,
+    newSessionState: NewSessionScreenState,
+    fileState: FileScreenState,
+    gitStatusState: GitStatusScreenState,
+    activeSessionCallbacks: ActiveSessionCallbacks,
+    newSessionCallbacks: NewSessionCallbacks,
+    gitStatusCallbacks: GitStatusCallbacks,
+    onSectionSelected: (SupervisorShellSection) -> Unit,
+    onProjectSelected: (String) -> Unit,
+    onSessionSelected: (projectId: String, sessionId: String) -> Unit,
+    onFileSelected: (String) -> Unit,
+    onSessionFiltersApplied: (GlobalSessionFilters) -> Unit,
+    onLoadMoreSessions: () -> Unit,
+    onSessionSelectionToggled: (String) -> Unit,
+    onBulkArchiveSessions: () -> Unit,
+    onBulkStarSessions: () -> Unit,
+    onBulkMarkSessionsRead: () -> Unit,
+    onBulkMarkSessionsUnread: () -> Unit,
+    onInboxProjectSelected: (String?) -> Unit,
+    onInboxMarkRead: (String) -> Unit,
+    onInboxMarkUnread: (String) -> Unit,
+    onLogout: () -> Unit,
+) {
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .testTag("supervisor-shell-compact"),
+        bottomBar = {
+            NavigationBar {
+                SupervisorShellSection.topLevelEntries.forEach { section ->
+                    NavigationBarItem(
+                        selected = state.selectedSection == section,
+                        onClick = { onSectionSelected(section) },
+                        icon = {
+                            Text(
+                                text = sectionCountLabel(section, state, agentsState, gitStatusState),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        },
+                        label = { Text(section.label) },
+                    )
                 }
+            }
+        },
+    ) { innerPadding ->
+        ShellContentColumn(
+            modifier = Modifier
+                .padding(innerPadding)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            state = state,
+            projectsState = projectsState,
+            sessionsState = sessionsState,
+            agentsState = agentsState,
+            inboxState = inboxState,
+            activeSessionState = activeSessionState,
+            newSessionState = newSessionState,
+            fileState = fileState,
+            gitStatusState = gitStatusState,
+            activeSessionCallbacks = activeSessionCallbacks,
+            newSessionCallbacks = newSessionCallbacks,
+            gitStatusCallbacks = gitStatusCallbacks,
+            onProjectSelected = onProjectSelected,
+            onSessionSelected = onSessionSelected,
+            onFileSelected = onFileSelected,
+            onSessionFiltersApplied = onSessionFiltersApplied,
+            onLoadMoreSessions = onLoadMoreSessions,
+            onSessionSelectionToggled = onSessionSelectionToggled,
+            onBulkArchiveSessions = onBulkArchiveSessions,
+            onBulkStarSessions = onBulkStarSessions,
+            onBulkMarkSessionsRead = onBulkMarkSessionsRead,
+            onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
+            onInboxProjectSelected = onInboxProjectSelected,
+            onInboxMarkRead = onInboxMarkRead,
+            onInboxMarkUnread = onInboxMarkUnread,
+            onLogout = onLogout,
+        )
+    }
+}
 
-                when (state.selectedSection) {
-                    SupervisorShellSection.PROJECTS -> ProjectsSection(
-                        state = projectsState,
-                        connectionStatus = state.snapshot.connectionStatus,
-                        onProjectSelected = onProjectSelected,
-                    )
-                    SupervisorShellSection.SESSIONS -> SessionsSection(
-                        state = sessionsState,
-                        connectionStatus = state.snapshot.connectionStatus,
-                        selectedProjectId = state.selectedProjectId,
-                        projects = projectsState.projects,
-                        onProjectSelected = onProjectSelected,
-                        onSessionSelected = onSessionSelected,
-                        onSessionFiltersApplied = onSessionFiltersApplied,
-                        onLoadMoreSessions = onLoadMoreSessions,
-                        onSessionSelectionToggled = onSessionSelectionToggled,
-                        onBulkArchiveSessions = onBulkArchiveSessions,
-                        onBulkStarSessions = onBulkStarSessions,
-                        onBulkMarkSessionsRead = onBulkMarkSessionsRead,
-                        onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
-                    )
-                    SupervisorShellSection.AGENTS -> AgentsSection(
-                        state = agentsState,
-                        connectionStatus = state.snapshot.connectionStatus,
-                        onSessionSelected = onSessionSelected,
-                    )
-                    SupervisorShellSection.INBOX -> InboxSection(
-                        state = inboxState,
-                        connectionStatus = state.snapshot.connectionStatus,
-                        onProjectSelected = onInboxProjectSelected,
-                        onMarkRead = onInboxMarkRead,
-                        onMarkUnread = onInboxMarkUnread,
-                    )
-                    SupervisorShellSection.SETTINGS -> PlaceholderSection(
-                        title = "Settings",
-                        subtitle = "Android settings categories will mirror the web settings surface.",
-                    )
-                    SupervisorShellSection.ACTIVE -> ActiveSessionSection(
-                        state = activeSessionState,
-                        callbacks = activeSessionCallbacks,
-                        onFileSelected = onFileSelected,
-                    )
-                    SupervisorShellSection.NEW_SESSION -> NewSessionSection(
-                        state = newSessionState,
-                        callbacks = newSessionCallbacks,
-                    )
-                    SupervisorShellSection.FILE -> FileSection(
-                        state = fileState,
-                    )
-                    SupervisorShellSection.GIT_STATUS -> GitStatusSection(
-                        state = gitStatusState,
-                        projects = projectsState.projects,
-                        callbacks = gitStatusCallbacks,
-                    )
-                    SupervisorShellSection.DEVICES -> PlaceholderSection(
-                        title = "Devices",
-                        subtitle = state.selectedDeviceId ?: "Device and emulator bridge route.",
-                    )
-                    SupervisorShellSection.ACTIVITY -> PlaceholderSection(
-                        title = "Activity",
-                        subtitle = "Recent sessions and cross-project activity route.",
+@Composable
+private fun WideSupervisorShell(
+    state: SupervisorShellScreenState,
+    projectsState: ProjectsScreenState,
+    sessionsState: SessionsScreenState,
+    agentsState: AgentsScreenState,
+    inboxState: InboxScreenState,
+    activeSessionState: ActiveSessionScreenState,
+    newSessionState: NewSessionScreenState,
+    fileState: FileScreenState,
+    gitStatusState: GitStatusScreenState,
+    activeSessionCallbacks: ActiveSessionCallbacks,
+    newSessionCallbacks: NewSessionCallbacks,
+    gitStatusCallbacks: GitStatusCallbacks,
+    onSectionSelected: (SupervisorShellSection) -> Unit,
+    onProjectSelected: (String) -> Unit,
+    onSessionSelected: (projectId: String, sessionId: String) -> Unit,
+    onFileSelected: (String) -> Unit,
+    onSessionFiltersApplied: (GlobalSessionFilters) -> Unit,
+    onLoadMoreSessions: () -> Unit,
+    onSessionSelectionToggled: (String) -> Unit,
+    onBulkArchiveSessions: () -> Unit,
+    onBulkStarSessions: () -> Unit,
+    onBulkMarkSessionsRead: () -> Unit,
+    onBulkMarkSessionsUnread: () -> Unit,
+    onInboxProjectSelected: (String?) -> Unit,
+    onInboxMarkRead: (String) -> Unit,
+    onInboxMarkUnread: (String) -> Unit,
+    onLogout: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .testTag("supervisor-shell-wide"),
+    ) {
+        SidebarPanel(
+            state = state,
+            projects = projectsState.projects,
+            agentsState = agentsState,
+            gitStatusState = gitStatusState,
+            onSectionSelected = onSectionSelected,
+            onProjectSelected = onProjectSelected,
+            onLogout = onLogout,
+        )
+        Surface(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .padding(start = 12.dp, top = 44.dp, end = 18.dp, bottom = 18.dp)
+                .testTag("supervisor-workspace"),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {
+            ShellContentColumn(
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
+                state = state,
+                projectsState = projectsState,
+                sessionsState = sessionsState,
+                agentsState = agentsState,
+                inboxState = inboxState,
+                activeSessionState = activeSessionState,
+                newSessionState = newSessionState,
+                fileState = fileState,
+                gitStatusState = gitStatusState,
+                activeSessionCallbacks = activeSessionCallbacks,
+                newSessionCallbacks = newSessionCallbacks,
+                gitStatusCallbacks = gitStatusCallbacks,
+                onProjectSelected = onProjectSelected,
+                onSessionSelected = onSessionSelected,
+                onFileSelected = onFileSelected,
+                onSessionFiltersApplied = onSessionFiltersApplied,
+                onLoadMoreSessions = onLoadMoreSessions,
+                onSessionSelectionToggled = onSessionSelectionToggled,
+                onBulkArchiveSessions = onBulkArchiveSessions,
+                onBulkStarSessions = onBulkStarSessions,
+                onBulkMarkSessionsRead = onBulkMarkSessionsRead,
+                onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
+                onInboxProjectSelected = onInboxProjectSelected,
+                onInboxMarkRead = onInboxMarkRead,
+                onInboxMarkUnread = onInboxMarkUnread,
+                onLogout = onLogout,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SidebarPanel(
+    state: SupervisorShellScreenState,
+    projects: List<ProjectSummary>,
+    agentsState: AgentsScreenState,
+    gitStatusState: GitStatusScreenState,
+    onSectionSelected: (SupervisorShellSection) -> Unit,
+    onProjectSelected: (String) -> Unit,
+    onLogout: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .width(344.dp)
+            .fillMaxHeight()
+            .padding(horizontal = 18.dp, vertical = 24.dp)
+            .testTag("supervisor-sidebar"),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text(
+            text = "Yep Anywhere",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = state.subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SupervisorShellSection.topLevelEntries.forEach { section ->
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onSectionSelected(section) },
+                ) {
+                    Text("${section.label} ${sectionCountLabel(section, state, agentsState, gitStatusState)}")
+                }
+            }
+        }
+        SummaryStrip(snapshot = state.snapshot)
+        SectionTitle(
+            title = "Projects",
+            subtitle = "Recent workspaces",
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            projects.take(8).forEach { project ->
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onProjectSelected(project.id) },
+                ) {
+                    Text(
+                        text = project.name,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
         }
+        Button(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onLogout,
+        ) {
+            Text("Log out")
+        }
+    }
+}
+
+@Composable
+private fun ShellContentColumn(
+    modifier: Modifier,
+    state: SupervisorShellScreenState,
+    projectsState: ProjectsScreenState,
+    sessionsState: SessionsScreenState,
+    agentsState: AgentsScreenState,
+    inboxState: InboxScreenState,
+    activeSessionState: ActiveSessionScreenState,
+    newSessionState: NewSessionScreenState,
+    fileState: FileScreenState,
+    gitStatusState: GitStatusScreenState,
+    activeSessionCallbacks: ActiveSessionCallbacks,
+    newSessionCallbacks: NewSessionCallbacks,
+    gitStatusCallbacks: GitStatusCallbacks,
+    onProjectSelected: (String) -> Unit,
+    onSessionSelected: (projectId: String, sessionId: String) -> Unit,
+    onFileSelected: (String) -> Unit,
+    onSessionFiltersApplied: (GlobalSessionFilters) -> Unit,
+    onLoadMoreSessions: () -> Unit,
+    onSessionSelectionToggled: (String) -> Unit,
+    onBulkArchiveSessions: () -> Unit,
+    onBulkStarSessions: () -> Unit,
+    onBulkMarkSessionsRead: () -> Unit,
+    onBulkMarkSessionsUnread: () -> Unit,
+    onInboxProjectSelected: (String?) -> Unit,
+    onInboxMarkRead: (String) -> Unit,
+    onInboxMarkUnread: (String) -> Unit,
+    onLogout: () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .testTag("supervisor-shell-scroll"),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        if (state.selectedSection != SupervisorShellSection.SESSIONS) {
+            ShellHeader(
+                title = state.title,
+                subtitle = state.subtitle,
+                onLogout = onLogout,
+            )
+
+            SummaryStrip(snapshot = state.snapshot)
+        }
+
+        ShellSectionContent(
+            state = state,
+            projectsState = projectsState,
+            sessionsState = sessionsState,
+            agentsState = agentsState,
+            inboxState = inboxState,
+            activeSessionState = activeSessionState,
+            newSessionState = newSessionState,
+            fileState = fileState,
+            gitStatusState = gitStatusState,
+            activeSessionCallbacks = activeSessionCallbacks,
+            newSessionCallbacks = newSessionCallbacks,
+            gitStatusCallbacks = gitStatusCallbacks,
+            onProjectSelected = onProjectSelected,
+            onSessionSelected = onSessionSelected,
+            onFileSelected = onFileSelected,
+            onSessionFiltersApplied = onSessionFiltersApplied,
+            onLoadMoreSessions = onLoadMoreSessions,
+            onSessionSelectionToggled = onSessionSelectionToggled,
+            onBulkArchiveSessions = onBulkArchiveSessions,
+            onBulkStarSessions = onBulkStarSessions,
+            onBulkMarkSessionsRead = onBulkMarkSessionsRead,
+            onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
+            onInboxProjectSelected = onInboxProjectSelected,
+            onInboxMarkRead = onInboxMarkRead,
+            onInboxMarkUnread = onInboxMarkUnread,
+        )
+    }
+}
+
+@Composable
+private fun ShellSectionContent(
+    state: SupervisorShellScreenState,
+    projectsState: ProjectsScreenState,
+    sessionsState: SessionsScreenState,
+    agentsState: AgentsScreenState,
+    inboxState: InboxScreenState,
+    activeSessionState: ActiveSessionScreenState,
+    newSessionState: NewSessionScreenState,
+    fileState: FileScreenState,
+    gitStatusState: GitStatusScreenState,
+    activeSessionCallbacks: ActiveSessionCallbacks,
+    newSessionCallbacks: NewSessionCallbacks,
+    gitStatusCallbacks: GitStatusCallbacks,
+    onProjectSelected: (String) -> Unit,
+    onSessionSelected: (projectId: String, sessionId: String) -> Unit,
+    onFileSelected: (String) -> Unit,
+    onSessionFiltersApplied: (GlobalSessionFilters) -> Unit,
+    onLoadMoreSessions: () -> Unit,
+    onSessionSelectionToggled: (String) -> Unit,
+    onBulkArchiveSessions: () -> Unit,
+    onBulkStarSessions: () -> Unit,
+    onBulkMarkSessionsRead: () -> Unit,
+    onBulkMarkSessionsUnread: () -> Unit,
+    onInboxProjectSelected: (String?) -> Unit,
+    onInboxMarkRead: (String) -> Unit,
+    onInboxMarkUnread: (String) -> Unit,
+) {
+    when (state.selectedSection) {
+        SupervisorShellSection.PROJECTS -> ProjectsSection(
+            state = projectsState,
+            connectionStatus = state.snapshot.connectionStatus,
+            onProjectSelected = onProjectSelected,
+        )
+        SupervisorShellSection.SESSIONS -> SessionsSection(
+            state = sessionsState,
+            connectionStatus = state.snapshot.connectionStatus,
+            selectedProjectId = state.selectedProjectId,
+            projects = projectsState.projects,
+            onProjectSelected = onProjectSelected,
+            onSessionSelected = onSessionSelected,
+            onSessionFiltersApplied = onSessionFiltersApplied,
+            onLoadMoreSessions = onLoadMoreSessions,
+            onSessionSelectionToggled = onSessionSelectionToggled,
+            onBulkArchiveSessions = onBulkArchiveSessions,
+            onBulkStarSessions = onBulkStarSessions,
+            onBulkMarkSessionsRead = onBulkMarkSessionsRead,
+            onBulkMarkSessionsUnread = onBulkMarkSessionsUnread,
+        )
+        SupervisorShellSection.AGENTS -> AgentsSection(
+            state = agentsState,
+            connectionStatus = state.snapshot.connectionStatus,
+            onSessionSelected = onSessionSelected,
+        )
+        SupervisorShellSection.INBOX -> InboxSection(
+            state = inboxState,
+            connectionStatus = state.snapshot.connectionStatus,
+            onProjectSelected = onInboxProjectSelected,
+            onMarkRead = onInboxMarkRead,
+            onMarkUnread = onInboxMarkUnread,
+        )
+        SupervisorShellSection.SETTINGS -> PlaceholderSection(
+            title = "Settings",
+            subtitle = "Android settings categories will mirror the web settings surface.",
+        )
+        SupervisorShellSection.ACTIVE -> ActiveSessionSection(
+            state = activeSessionState,
+            callbacks = activeSessionCallbacks,
+            onFileSelected = onFileSelected,
+        )
+        SupervisorShellSection.NEW_SESSION -> NewSessionSection(
+            state = newSessionState,
+            callbacks = newSessionCallbacks,
+        )
+        SupervisorShellSection.FILE -> FileSection(
+            state = fileState,
+        )
+        SupervisorShellSection.GIT_STATUS -> GitStatusSection(
+            state = gitStatusState,
+            projects = projectsState.projects,
+            callbacks = gitStatusCallbacks,
+        )
+        SupervisorShellSection.DEVICES -> PlaceholderSection(
+            title = "Devices",
+            subtitle = state.selectedDeviceId ?: "Device and emulator bridge route.",
+        )
+        SupervisorShellSection.ACTIVITY -> PlaceholderSection(
+            title = "Activity",
+            subtitle = "Recent sessions and cross-project activity route.",
+        )
+    }
+}
+
+private fun sectionCountLabel(
+    section: SupervisorShellSection,
+    state: SupervisorShellScreenState,
+    agentsState: AgentsScreenState,
+    gitStatusState: GitStatusScreenState,
+): String {
+    return when (section) {
+        SupervisorShellSection.PROJECTS -> "${state.snapshot.projects.size}"
+        SupervisorShellSection.SESSIONS -> "${state.snapshot.sessions.size}"
+        SupervisorShellSection.AGENTS -> "${agentsState.activeAgents.size}"
+        SupervisorShellSection.INBOX -> "${state.snapshot.unreadInboxCount}"
+        SupervisorShellSection.GIT_STATUS -> "${gitStatusState.status?.files?.size ?: 0}"
+        SupervisorShellSection.SETTINGS -> "0"
+        else -> "0"
     }
 }
 
