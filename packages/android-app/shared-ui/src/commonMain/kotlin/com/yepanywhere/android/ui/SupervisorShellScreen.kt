@@ -87,7 +87,7 @@ enum class SupervisorShellSection(
     ;
 
     companion object {
-        val topLevelEntries = listOf(PROJECTS, SESSIONS, AGENTS, INBOX, GIT_STATUS, SETTINGS)
+        val topLevelEntries = listOf(PROJECTS, SESSIONS, AGENTS, INBOX, GIT_STATUS)
     }
 }
 
@@ -667,14 +667,6 @@ private fun WidePromptWorkspace(
                 projectName = projectName,
                 onClick = onNewSessionSelected,
             )
-            Column(
-                modifier = Modifier.fillMaxWidth(0.74f),
-                verticalArrangement = Arrangement.spacedBy(0.dp),
-            ) {
-                PromptSuggestion("Review my recent commits for correctness risks and maintainability concerns")
-                PromptSuggestion("Unblock my most recent open PR")
-                PromptSuggestion("Connect my favorite apps to Yep Anywhere")
-            }
         }
     }
 }
@@ -741,21 +733,6 @@ private fun WideComposer(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun PromptSuggestion(text: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = Color.Transparent,
-    ) {
-        Text(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = ShellMuted,
-        )
     }
 }
 

@@ -116,6 +116,10 @@ class SupervisorShellScreenTest {
             .assertIsDisplayed()
         composeRule.onAllNodesWithText("Yep Anywhere Android")
             .assertCountEquals(0)
+        composeRule.onAllNodesWithText("Review my recent commits for correctness risks and maintainability concerns")
+            .assertCountEquals(0)
+        composeRule.onAllNodesWithText("Settings")
+            .assertCountEquals(0)
     }
 
     @Test
@@ -131,6 +135,8 @@ class SupervisorShellScreenTest {
             .assertIsDisplayed()
         composeRule.onNodeWithTag("supervisor-shell-scroll")
             .assert(hasScrollAction())
+        composeRule.onAllNodesWithText("Settings")
+            .assertCountEquals(0)
     }
 
     @Test

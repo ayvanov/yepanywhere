@@ -138,7 +138,6 @@ class SupervisorShellViewModelTest {
                 SupervisorShellSection.AGENTS,
                 SupervisorShellSection.INBOX,
                 SupervisorShellSection.GIT_STATUS,
-                SupervisorShellSection.SETTINGS,
             ),
             SupervisorShellSection.topLevelEntries,
         )
